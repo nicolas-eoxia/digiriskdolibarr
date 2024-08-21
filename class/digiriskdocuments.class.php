@@ -198,6 +198,7 @@ class DigiriskDocuments extends SaturneDocuments
                                 $scale = $lastEvaluation->getEvaluationScale();
 
                                 if ($scale == $i) {
+
                                     $element        = $activeDigiriskElements[$line->fk_element];
                                     $linked_element = $activeDigiriskElements[$line->appliedOn];
                                     $nomElement     = '';
@@ -227,6 +228,9 @@ class DigiriskDocuments extends SaturneDocuments
                                             $nomElement .= '<br>' . ($dash > 0 ? ' - ' : '') . $element->ref . ' - ' . $element->label;
                                         }
                                     }
+
+                                    echo '<pre>'; print_r( 'rfd' ); echo '</pre>';
+
 
                                     $tmparray['nomElement']        = $nomElement;
                                     $tmparray['nomDanger']         = DOL_DOCUMENT_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $line->getDangerCategory($line) . '.png';
@@ -408,6 +412,7 @@ class DigiriskDocuments extends SaturneDocuments
                             }
                         }
                     }
+                    exit;
                 } else {
                     $tmparray['nomElement']                  = $langs->trans('NoData');
                     $tmparray['nomDanger']                   = $langs->trans('NoData');

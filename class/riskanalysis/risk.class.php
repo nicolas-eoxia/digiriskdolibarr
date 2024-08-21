@@ -192,12 +192,11 @@ class Risk extends SaturneObject
 		$objects = $object->getActiveDigiriskElements();
 
         if ($get_shared_data) {
-            $activeDigiriskElements               = $object->getActiveDigiriskElements($get_shared_data);
-            $risk->ismultientitymanaged           = 0;
-            $riskAssessment->ismultientitymanaged = 0;
+            $activeDigiriskElements = $object->getActiveDigiriskElements($get_shared_data);
         }
 		$riskList           = $risk->fetchAll('', '', 0, 0, ['customsql' => 'status = ' . self::STATUS_VALIDATED . $moreParams['filterRisk']]);
         $riskAssessmentList = $riskAssessment->fetchAll('', '', 0, 0, ['customsql' => 'status = ' . RiskAssessment::STATUS_VALIDATED . $moreParams['filterRiskAssessment']]);
+        echo '<pre>'; print_r( $riskAssessmentList ); echo '</pre>'; exit;
 
 		if (is_array($riskAssessmentList) && !empty($riskAssessmentList)) {
 			foreach ($riskAssessmentList as $riskAssessmentSingle) {
@@ -207,11 +206,15 @@ class Risk extends SaturneObject
 
 		if (is_array($riskList) && !empty($riskList)) {
 			foreach ($riskList as $riskSingle) {
-				$riskSingle->lastEvaluation                               = $riskAssessmentsOrderedByRisk[$riskSingle->id];
-				$riskSingle->appliedOn                                    = $riskSingle->fk_element;
-				$risksOrderedByDigiriskElement[$riskSingle->fk_element][] = $riskSingle;
+                if ($riskSingle->id == 3402) {
+                    $riskSingle->lastEvaluation = $riskAssessmentsOrderedByRisk[$riskSingle->id];
+                    $riskSingle->appliedOn = $riskSingle->fk_element;
+                    $risksOrderedByDigiriskElement[$riskSingle->fk_element][] = $riskSingle;
+                }
 			}
 		}
+        echo '<pre>'; print_r( $risksOrderedByDigiriskElement ); echo '</pre>'; exit;
+
 		$risks = [];
 
 		//For groupment & workunit documents with given id
