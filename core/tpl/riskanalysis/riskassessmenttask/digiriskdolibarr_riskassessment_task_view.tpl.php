@@ -1,6 +1,6 @@
 <?php
-$related_tasks = $riskAssessmentTaskList[$risk->id];
-if (!empty($related_tasks) && $related_tasks > 0) {
+$related_tasks = $riskAssessmentTaskList[$risk->id] ?? [];
+if (!empty($related_tasks) && is_array($related_tasks)) {
 	foreach ($related_tasks as $related_task_id => $related_task) {
 		if (!is_object($related_task)) {
 			unset($related_tasks[$related_task_id]);
@@ -13,12 +13,12 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 		<?php if (!empty($related_tasks) && $related_tasks > 0) : ?>
 			<?php foreach ($related_tasks as $related_task) {
 				if (!empty($conf->global->DIGIRISKDOLIBARR_SHOW_SHARED_RISKS) && $contextpage == 'sharedrisk') {
-					if ($related_task->fk_project != $conf->global->DIGIRISKDOLIBARR_DU_PROJECT) {
-						$project->fetch($related_task->fk_project);
+					if ($related_task->fk_projet != $conf->global->DIGIRISKDOLIBARR_DU_PROJECT && $related_task->fk_projet != $conf->global->DIGIRISKDOLIBARR_ENVIRONMENT_PROJECT) {
+						$project->fetch($related_task->fk_projet);
 					} else {
 						$project = $DUProject;
 					}
-					$result = !empty($conf->mc->sharings['project']) ? in_array($project->entity, $conf->mc->sharings['project']) : 0;
+					$result = !empty($mc->sharings['project']) ? in_array($project->entity, $mc->sharings['project']) : 0;
 				} else {
 					$result = 1;
 				}
@@ -29,21 +29,23 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 			<div class="table-cell-header-label"><strong><?php echo $form->textwithpicto($langs->trans('ListingHeaderTask') . ' (' . (($related_tasks && $result) ? count($related_tasks) : 0) . ')', $result == 0 ? $langs->trans('ListingHeaderTaskTooltip') : '', 1, 'help', 'listingHeaderTaskTooltip'); ?></strong></div>
 			<div class="table-cell-header-actions">
 				<?php if ($permissiontoread && $result) : ?>
-					<div class="wpeo-button riskassessment-task-list button-square-40 button-grey wpeo-tooltip-event modal-open risk-list-button" aria-label="<?php echo $langs->trans('ListRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
+					<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event modal-open" aria-label="<?php echo $langs->trans('ListRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
+						<input type="hidden" class="modal-options" data-modal-to-open="risk_assessment_task_list<?php echo $risk->id; ?>" data-from-id="<?php echo $risk->id;?>" data-from-type="riskassessment" data-from-subtype="photo" data-from-subdir="" data-photo-class="riskassessment-from-riskassessment-create-<?php echo $risk->id; ?>"/>
 						<i class="button-icon fas fa-list-ul"></i>
 					</div>
 				<?php elseif ($result == 0) : ?>
-					<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event risk-list-button" aria-label="<?php echo $langs->trans('NoTaskShared') ?>" value="<?php echo $risk->id;?>">
+					<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event" aria-label="<?php echo $langs->trans('NoTaskShared') ?>" value="<?php echo $risk->id;?>">
 						<i class="button-icon fas fa-list-ul"></i>
 					</div>
 				<?php else : ?>
-					<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event risk-list-button" aria-label="<?php echo $langs->trans('PermissionDenied') ?>" value="<?php echo $risk->id;?>">
+					<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event" aria-label="<?php echo $langs->trans('PermissionDenied') ?>" value="<?php echo $risk->id;?>">
 						<i class="button-icon fas fa-list-ul"></i>
 					</div>
 				<?php endif; ?>
 				<?php if ($contextpage != 'sharedrisk' && $contextpage != 'inheritedrisk') : ?>
 					<?php if ($permissiontoadd) : ?>
-						<div class="riskassessment-task-add wpeo-button button-square-40 button-primary wpeo-tooltip-event modal-open risk-list-button" aria-label="<?php echo $langs->trans('AddRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
+						<div class="wpeo-button button-square-40 button-primary wpeo-tooltip-event modal-open" aria-label="<?php echo $langs->trans('AddRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
+							<input type="hidden" class="modal-options" data-modal-to-open="risk_assessment_task_add<?php echo $risk->id; ?>" data-from-id="0" data-from-type="riskassessment" data-from-subtype="photo" data-from-subdir="" data-photo-class="riskassessment-from-riskassessment-create-<?php echo $risk->id; ?>"/>
 							<i class="fas fa-plus button-icon"></i>
 						</div>
 					<?php else : ?>
@@ -75,22 +77,11 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 				}
 				if ($nb_of_tasks_in_progress == 0) : ?>
 					<div class="riskassessment-task-container riskassessment-no-task">
-						<div class="riskassessment-task-single-content riskassessment-task-single-content-<?php echo $risk->id ?>" value="<?php echo $related_task->id ?>">
+						<div class="riskassessment-task-single-content riskassessment-task-single-content-<?php echo $risk->id ?>" value="<?php echo $related_task->id ?? 0 ?>">
 							<div class="riskassessment-task-single riskassessment-task-single-<?php echo $risk->id ?>">
 								<div class="riskassessment-task-content">
 									<div class="riskassessment-task-data" style="justify-content: center;">
 										<span class="name"><?php echo $result > 0 ? $langs->trans('NoTaskLinked') : $langs->trans('NoTaskShared'); ?></span>
-										<?php if ($contextpage != 'sharedrisk' && $contextpage != 'inheritedrisk') : ?>
-											<?php if ($permissiontoadd) : ?>
-												<div class="riskassessment-task-add wpeo-button button-square-40 button-primary wpeo-tooltip-event modal-open risk-list-button" aria-label="<?php echo $langs->trans('AddRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
-													<i class="fas fa-plus button-icon"></i>
-												</div>
-											<?php else : ?>
-												<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event risk-list-button" aria-label="<?php echo $langs->trans('PermissionDenied') ?>" value="<?php echo $risk->id;?>">
-													<i class="fas fa-plus button-icon"></i>
-												</div>
-											<?php endif; ?>
-										<?php endif; ?>
 									</div>
 								</div>
 							</div>
@@ -118,17 +109,6 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 								<div class="riskassessment-task-content">
 									<div class="riskassessment-task-data" style="justify-content: center;">
 										<span class="name"><?php echo $result > 0 ? $langs->trans('NoTaskLinked') : $langs->trans('NoTaskShared'); ?></span>
-										<?php if ($contextpage != 'sharedrisk' && $contextpage != 'inheritedrisk') : ?>
-											<?php if ($permissiontoadd) : ?>
-												<div class="riskassessment-task-add wpeo-button button-square-40 button-primary wpeo-tooltip-event modal-open risk-list-button" aria-label="<?php echo $langs->trans('AddRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
-													<i class="fas fa-plus button-icon"></i>
-												</div>
-											<?php else : ?>
-												<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event risk-list-button" aria-label="<?php echo $langs->trans('PermissionDenied') ?>" value="<?php echo $risk->id;?>">
-													<i class="fas fa-plus button-icon"></i>
-												</div>
-											<?php endif; ?>
-										<?php endif; ?>
 									</div>
 								</div>
 							</div>
@@ -139,22 +119,11 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 		<?php else : ?>
 			<div class="riskassessment-task-listing-wrapper riskassessment-task-listing-wrapper-<?php echo $risk->id ?>">
 				<div class="riskassessment-task-container riskassessment-no-task">
-					<div class="riskassessment-task-single-content riskassessment-task-single-content-<?php echo $risk->id ?>" value="<?php echo $related_task->id ?>">
+					<div class="riskassessment-task-single-content riskassessment-task-single-content-<?php echo $risk->id ?>" value="0">
 						<div class="riskassessment-task-single riskassessment-task-single-<?php echo $risk->id ?>">
 							<div class="riskassessment-task-content">
 								<div class="riskassessment-task-data" style="justify-content: center;">
 									<span class="name"><?php echo $langs->trans('NoTaskLinked'); ?></span>
-									<?php if ($contextpage != 'sharedrisk' && $contextpage != 'inheritedrisk') : ?>
-										<?php if ($permissiontoadd) : ?>
-											<div class="riskassessment-task-add wpeo-button button-square-40 button-primary wpeo-tooltip-event modal-open risk-list-button" aria-label="<?php echo $langs->trans('AddRiskAssessmentTask') ?>" value="<?php echo $risk->id;?>">
-												<i class="fas fa-plus button-icon"></i>
-											</div>
-										<?php else : ?>
-											<div class="wpeo-button button-square-40 button-grey wpeo-tooltip-event risk-list-button" aria-label="<?php echo $langs->trans('PermissionDenied') ?>" value="<?php echo $risk->id;?>">
-												<i class="fas fa-plus button-icon"></i>
-											</div>
-										<?php endif; ?>
-									<?php endif; ?>
 								</div>
 							</div>
 						</div>
@@ -165,11 +134,11 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 
 		<!-- RISK ASSESSMENT TASK ADD MODAL-->
 		<div class="riskassessment-task-add-modal">
-			<div class="wpeo-modal modal-risk" id="risk_assessment_task_add<?php echo $risk->id?>">
+			<div class="wpeo-modal modal-risk" id="risk_assessment_task_add<?php echo $risk->id?>" value="<?php echo $risk->id ?>">
 				<div class="modal-container wpeo-modal-event">
 					<!-- Modal-Header -->
 					<div class="modal-header">
-						<h2 class="modal-title"><?php echo $langs->trans('TaskCreate') . ' ' . $taskNextValue . '  ' . $langs->trans('AT') . '  ' . $langs->trans('Project') . '  ' . $DUProject->getNomUrl() ?><i class="fas fa-info-circle wpeo-tooltip-event" aria-label="<?php echo $langs->trans('HowToSetDUProject'); ?>"></i></h2>
+						<h2 class="modal-title"><?php echo  '<i class="fas fa-tasks"></i>' . ' ' . $taskNextValue . '   ' . '<i class="fas fa-project-diagram em088"></i>' . ' ' . $DUProject->getNomUrl() ?><i class="fas fa-info-circle wpeo-tooltip-event" aria-label="<?php echo $langs->trans('HowToSetDUProject'); ?>"></i></h2>
 						<div class="modal-close"><i class="fas fa-times"></i></div>
 					</div>
 					<!-- MODAL ADD RISK ASSESSMENT TASK CONTENT -->
@@ -182,34 +151,44 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 								<div class="notice-close"><i class="fas fa-times"></i></div>
 							</div>
 						</div>
-						<div class="riskassessment-task-container">
-							<div class="riskassessment-task">
-								<span class="title"><?php echo $langs->trans('Label'); ?></span>
-								<input type="text" class="riskassessment-task-label" name="label" value="">
-								<div class="riskassessment-task-date wpeo-gridlayout grid-2">
-									<div>
-										<span class="title"><?php echo $langs->trans('DateStart'); ?></span>
-										<?php print $form->selectDate(dol_now('tzuser'), 'RiskassessmentTaskDateStart' . $risk->id, 1, 1, 0, '', 1, 1); ?>
-									</div>
-									<div>
-										<span class="title"><?php echo $langs->trans('Deadline'); ?></span>
-										<?php print $form->selectDate(-1,'RiskassessmentTaskDateEnd'. $risk->id, 1, 1, 0, '', 1, 1); ?>
-									</div>
-								</div>
-								<span class="title"><?php echo $langs->trans('Budget'); ?></span>
-								<input type="text" class="riskassessment-task-budget" name="budget" value="">
-							</div>
-						</div>
+                        <div class="riskassessment-task-container">
+                            <div class="riskassessment-task">
+                                <div class="wpeo-gridlayout flex flex-row items-center">
+                                    <i class="fas fa-paragraph"></i>
+                                    <input type="text" class="riskassessment-task-label" name="label" value="">
+                                </div>
+                                <div class="riskassessment-task-date wpeo-gridlayout grid-3" style="margin-top: 1em; margin-bottom: 1em;">
+                                    <div class="flex flex-row items-center">
+                                        <i class="fas fa-calendar-day" style="margin-right: 1em;"></i>
+                                        <?php print '<input type="datetime-local" id="RiskassessmentTaskDateStart' . $risk->id . '" name="RiskassessmentTaskDateStart' . $risk->id . '">'; ?>
+                                    </div>
+                                    <div class="flex flex-row items-center">
+                                        <i class="fas fa-calendar-check" style="margin-right: 1em;"></i>
+                                        <?php print '<input type="datetime-local" id="RiskassessmentTaskDateEnd' . $risk->id . '" name="RiskassessmentTaskDateEnd' . $risk->id . '">'; ?>
+                                    </div>
+                                    <div class="flex flex-row items-center paddingright">
+                                        <i class="fas fa-euro-sign" style="margin-right: 1em;"></i>
+                                        <input type="text" class="riskassessment-task-budget" name="budget" value="">
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex flex-row items-center justify-center">
+                                        <i class="fas fa-user-tie 100" style="margin-right: 1em;"></i>
+                                        <?php print $form->select_dolusers(0, 'executive_id', 1, null, 0, '', 0, '', 0, 'minwidth200', '', 0, '', 'executiveSelect'); ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 					</div>
 					<!-- Modal-Footer -->
 					<div class="modal-footer">
 						<?php if ($permissiontoadd) : ?>
-							<div class="wpeo-button riskassessment-task-create button-blue button-disable modal-close" value="<?php echo $risk->id ?>">
-								<i class="fas fa-plus"></i> <?php echo $langs->trans('Add'); ?>
+							<div class="wpeo-button riskassessment-task-create button-blue button-disable modal-close"  style="color: #fff" value="<?php echo $risk->id ?>">
+								<i class="fas fa-plus"></i>
 							</div>
 						<?php else : ?>
 							<div class="wpeo-button button-grey wpeo-tooltip-event" aria-label="<?php echo $langs->trans('PermissionDenied') ?>">
-								<i class="fas fa-plus"></i> <?php echo $langs->trans('Add'); ?>
+								<i class="fas fa-plus"></i>
 							</div>
 						<?php endif; ?>
 					</div>
@@ -219,7 +198,7 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 		<!-- RISK ASSESSMENT TASK ADD MODAL END -->
 		<!-- RISK ASSESSMENT TASK LIST MODAL -->
 		<div class="riskassessment-task-list-modal">
-			<div class="wpeo-modal" id="risk_assessment_task_list<?php echo $risk->id ?>">
+			<div class="wpeo-modal modal-risk" id="risk_assessment_task_list<?php echo $risk->id ?>" value="<?php echo $risk->id ?>">
 				<div class="modal-container wpeo-modal-event">
 					<!-- Modal-Header -->
 					<div class="modal-header">
@@ -227,7 +206,7 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 						<div class="modal-close"><i class="fas fa-times"></i></div>
 					</div>
 					<!-- MODAL RISK ASSESSMENT TASK LIST CONTENT -->
-					<div class="modal-content" id="#modalContent" value="<?php echo $risk->id ?>">
+					<div class="modal-content modal-risk" id="#modalContent" value="<?php echo $risk->id ?>">
 						<!-- RISKASSESSMENT TASK -->
 						<div class="messageSuccessTaskEdit notice hidden">
 							<input type="hidden" class="valueForEditTask1" value="<?php echo $langs->trans('TheTask') . ' ' ?>">
@@ -318,26 +297,36 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 		</div>
 		<!-- RISK ASSESSMENT TASK LIST MODAL END -->
 		<!-- RISK ASSESSMENT TASK EDIT MODALS -->
-		<?php if ( ! empty($related_tasks) && $related_tasks > 0) : ?>
-			<?php foreach ($related_tasks as $related_task) : ?>
-				<?php $allTimeSpentArray = $timeSpentSortedByTasks[$related_task->id]; ?>
+		<?php if ( ! empty($related_tasks) && $related_tasks > 0) :
+            foreach ($related_tasks as $related_task) :
+                if ($conf->global->DIGIRISKDOLIBARR_SHOW_TASK_CALCULATED_PROGRESS) {
+                    $tmparray = $related_task->getSummaryOfTimeSpent();
+                    if ($tmparray['total_duration'] > 0 && !empty($related_task->planned_workload)) {
+                        $task_progress = round($tmparray['total_duration'] / $related_task->planned_workload * 100, 2);
+                    } else {
+                        $task_progress = 0;
+                    }
+                } else {
+                    $task_progress = $related_task->progress;
+                }
+                $allTimeSpentArray = $timeSpentSortedByTasks[$related_task->id] ?? []; ?>
 				<div class="wpeo-modal riskassessment-task-edit-modal" id="risk_assessment_task_edit<?php echo $related_task->id ?>">
 					<div class="modal-container wpeo-modal-event">
 						<!-- Modal-Header -->
 						<div class="modal-header">
-							<h2 class="modal-title"><?php echo $langs->trans('TaskEdit') . ' ' . $related_task->getNomUrlTask(0) ?></h2>
+							<h2 class="modal-title"><?php echo $langs->trans('TaskEdit') . ' ' . $related_task->getNomUrl(0) ?></h2>
 							<div class="modal-close"><i class="fas fa-times"></i></div>
 						</div>
 						<!-- Modal-Content -->
 						<div class="modal-content riskassessment-task-content">
 							<div class="riskassessment-task-data" value="<?php echo $related_task->id ?>">
-								<span class="riskassessment-task-reference" value="<?php echo $related_task->ref ?>"><?php echo $related_task->getNomUrlTask(0, 'withproject'); ?></span>
+								<span class="riskassessment-task-reference" value="<?php echo $related_task->ref ?>"><?php echo $related_task->getNomUrl(0, 'withproject'); ?></span>
 								<span class="riskassessment-task-author">
-									<?php $userAuthor = $usersList[$related_task->fk_user_creat?:$user->id];
+									<?php $userAuthor = $usersList[$related_task->fk_user_creat > 0 ? $related_task->fk_user_creat : $user->id];
 									echo getNomUrlUser($userAuthor); ?>
 								</span>
 								<span class="riskassessment-task-date">
-									<i class="fas fa-calendar-alt"></i> <?php echo date('d/m/Y', (($conf->global->DIGIRISKDOLIBARR_SHOW_TASK_START_DATE && ( ! empty($related_task->date_start))) ? $related_task->date_start : $related_task->date_c)) . (($conf->global->DIGIRISKDOLIBARR_SHOW_TASK_END_DATE && ( ! empty($related_task->date_end))) ? ' - ' . date('d/m/Y', $related_task->date_end) : ''); ?>
+									<i class="fas fa-calendar-alt"></i> <?php echo date('d/m/Y', (($conf->global->DIGIRISKDOLIBARR_SHOW_TASK_START_DATE && ( ! empty($related_task->dateo))) ? $related_task->dateo : $related_task->datec)) . (($conf->global->DIGIRISKDOLIBARR_SHOW_TASK_END_DATE && ( ! empty($related_task->datee))) ? ' - ' . date('d/m/Y', $related_task->datee) : ''); ?>
 								</span>
 								<span class="riskassessment-total-task-timespent riskassessment-total-task-timespent-<?php echo $related_task->id ?>">
 									<?php
@@ -367,18 +356,34 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 								<div class="riskassessment-task-date wpeo-gridlayout grid-3">
 									<div>
 										<span class="title"><?php echo $langs->trans('DateStart'); ?></span>
-										<?php print $form->selectDate($related_task->date_start ?: -1, 'RiskassessmentTaskDateStartEdit'.$related_task->id, 1, 1, 0, '', 1, 1); ?>
+                                        <?php print '<input type="datetime-local" id="RiskassessmentTaskDateStartEdit' . $related_task->id . '" name="RiskassessmentTaskDateStartEdit' . $related_task->id . '" value="' . ($related_task->dateo ? dol_print_date($related_task->dateo, '%Y-%m-%dT%H:%M:%S') : '') . '">'; ?>
 									</div>
 									<div>
 										<span class="title"><?php echo $langs->trans('Deadline'); ?></span>
-										<?php print $form->selectDate($related_task->date_end ?: -1,'RiskassessmentTaskDateEndEdit'.$related_task->id, 1, 1, 0, '', 1, 1); ?>
+                                        <?php print '<input type="datetime-local" id="RiskassessmentTaskDateEndEdit' . $related_task->id . '" name="RiskassessmentTaskDateEndEdit' . $related_task->id . '" value="' . ($related_task->datee ? dol_print_date($related_task->datee, '%Y-%m-%dT%H:%M:%S') : '') . '">'; ?>
 									</div>
 									<div class="riskassessment-task-budget">
 										<span class="title"><?php echo $langs->trans('Budget'); ?></span>
 										<input type="text" class="riskassessment-task-budget<?php echo $related_task->id ?>" name="budget" value="<?php echo price2num($related_task->budget_amount); ?>">
 									</div>
 								</div>
+							<div class="flex flex-row items-center" style="margin-top: 1em;">
+								<i class="fas fa-user-tie" style="margin-right: 1em;"></i>
+								<?php
+								$contactsIntern     = $related_task->liste_contact(-1, 'internal');
+								$currentExecutiveId = '';
+								if (!empty($contactsIntern)) {
+									foreach ($contactsIntern as $contact) {
+										if ($contact['code'] === 'TASKEXECUTIVE') {
+											$currentExecutiveId = $contact['id'];
+											break;
+										}
+									}
+								}
+								print $form->select_dolusers($currentExecutiveId, 'executive_id_edit' . $related_task->id, 1, null, 0, '', 0, '', 0, 'minwidth200', '', 0, '', 'executiveSelectEdit');
+								?>
 							</div>
+						</div>
 							<hr>
 							<!-- RISKASSESSMENT TASK TIME SPENT NOTICE -->
 							<div class="messageSuccessTaskTimeSpentCreate<?php echo $related_task->id ?> notice hidden">
@@ -498,7 +503,8 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 														<!-- BUTTON MODAL RISK ASSESSMENT TASK TIMESPENT EDIT  -->
 														<div class="table-cell table-end table-125 table-padding-0 riskassessment-task-actions">
 															<?php if ($permissiontoadd) : ?>
-																<div class="riskassessment-task-timespent-edit wpeo-button button-square-50 button-transparent modal-open" value="<?php echo $time_spent->timespent_id ?>">
+																<div class="wpeo-button button-square-50 button-transparent modal-open" value="<?php echo $time_spent->timespent_id ?>">
+																	<input type="hidden" class="modal-options" data-modal-to-open="risk_assessment_task_timespent_edit<?php echo $time_spent->timespent_id; ?>" data-from-id="<?php echo $time_spent->timespent_id; ?>" data-from-type="riskassessmenttasktimespent" data-from-subtype="photo" data-from-subdir="" data-photo-class="riskassessment-from-riskassessment-create-<?php echo $risk->id; ?>"/>
 																	<i class="fas fa-pencil-alt button-icon"></i>
 																</div>
 															<?php else : ?>
@@ -545,7 +551,7 @@ if (!empty($related_tasks) && $related_tasks > 0) {
 						<div class="modal-container wpeo-modal-event">
 							<!-- Modal-Header -->
 							<div class="modal-header">
-								<h2 class="modal-title"><?php echo $langs->trans('TaskTimeSpentEdit') . ' ' . $related_task->getNomUrlTask(0, 'withproject') ?></h2>
+								<h2 class="modal-title"><?php echo $langs->trans('TaskTimeSpentEdit') . ' ' . $related_task->getNomUrl(0, 'withproject') ?></h2>
 								<div class="modal-close"><i class="fas fa-times"></i></div>
 							</div>
 							<!-- Modal EDIT RISK ASSESSMENT TASK Content-->

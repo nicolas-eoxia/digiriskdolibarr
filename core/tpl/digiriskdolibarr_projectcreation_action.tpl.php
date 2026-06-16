@@ -1,6 +1,5 @@
 <?php
-
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2024 EVARISK <technique@evarisk.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,8 +15,30 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
+/**
+ * \file    core/tpl/digiriskdolibarr_projectcreation_action.tpl.php
+ * \ingroup digiriskdolibarr
+ * \brief   Template page for project creation actions
+ */
 
+/**
+ * The following vars must be defined :
+ * Global   : $conf, $db, $langs, $user
+ * Variable : $moduleNameLowerCase
+ */
+
+require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
+require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
+
+require_once DOL_DOCUMENT_ROOT . '/projet/class/project.class.php';
+require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
+require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
+
+$userGroup   = new UserGroup($db);
+$project     = new Project($db);
+$third_party = new Societe($db);
 //Set multi entity sharing
 
 $params = array(
@@ -97,8 +118,11 @@ if (!array_key_exists('digiriskdolibarr', $externalmodule)) {
 	dolibarr_set_const($db, "MULTICOMPANY_EXTERNAL_MODULES_SHARING", $jsonformat, 'json', 0, '', 0);
 }
 
+$numberingModules  = ['project' => $conf->global->PROJECT_ADDON];
+list ($projectRef) = saturne_require_objects_mod($numberingModules, $moduleNameLowerCase);
+
 //Check projet
-if ($conf->global->DIGIRISKDOLIBARR_DU_PROJECT > 0 && $conf->global->DIGIRISKDOLIBARR_DU_PROJECT_BACKWARD_COMPATIBILITY == 0) {
+if ($conf->global->DIGIRISKDOLIBARR_DU_PROJECT > 0 && empty($conf->global->DIGIRISKDOLIBARR_DU_PROJECT_BACKWARD_COMPATIBILITY)) {
 	$project->fetch($conf->global->DIGIRISKDOLIBARR_DU_PROJECT);
 	//Backward compatibility
 	if ($project->title == $langs->trans('RiskAssessmentDocument')) {
@@ -107,7 +131,6 @@ if ($conf->global->DIGIRISKDOLIBARR_DU_PROJECT > 0 && $conf->global->DIGIRISKDOL
 		$project->update($user);
 	}
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'DU');
@@ -122,7 +145,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_DU_PROJECT == 0 || $project->statut == 2 ) 
 	$project->date_c      = dol_now();
 	$currentYear          = dol_print_date(dol_now(), '%Y');
 	$fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
-	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ? $fiscalMonthStart : '1', '1', $currentYear);
+	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
 	$project->date_start  = $startdate;
 
 	$project->usage_task = 1;
@@ -135,7 +158,6 @@ if ( $conf->global->DIGIRISKDOLIBARR_DU_PROJECT == 0 || $project->statut == 2 ) 
 	$project_id            = $project->create($user);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_DU_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'DU');
@@ -156,27 +178,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_DU_PROJECT == 0 || $project->statut == 2 ) 
 	header("Location: " . $_SERVER['PHP_SELF']);
 }
 
-if ($conf->global->DIGIRISKDOLIBARR_DIGIRISKSTANDARD_MENU_UPDATED == 0) {
-
-	$url = '/digiriskdolibarr/view/digiriskstandard/digiriskstandard_card.php?id=' . $conf->global->DIGIRISKDOLIBARR_ACTIVE_STANDARD;
-
-	$sql = "UPDATE ".MAIN_DB_PREFIX."menu SET";
-	$sql .= " url='".$db->escape($url)."'";
-	$sql .= " WHERE leftmenu='digiriskstandard'";
-	$sql .= " AND entity=" . $conf->entity;
-	$resql = $db->query($sql);
-	if (!$resql) {
-		$error = "Error ".$db->lasterror();
-		return -1;
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_DIGIRISKSTANDARD_MENU_UPDATED', 1, 'integer', 0, '', $conf->entity);
-
-	header("Location: " . $_SERVER['PHP_SELF']);
-
-}
-
-if ($conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT > 0 && $conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT_BACKWARD_COMPATIBILITY == 0 ) {
+if ($conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT > 0 && empty($conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT_BACKWARD_COMPATIBILITY)) {
 	$project->fetch($conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT);
 	//Backward compatibility
 	if ($project->title == $langs->trans('PreventionPlan')) {
@@ -199,7 +201,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT == 0 || $project->st
 	$project->date_c      = dol_now();
 	$currentYear          = dol_print_date(dol_now(), '%Y');
 	$fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
-	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ? $fiscalMonthStart : '1', '1', $currentYear);
+	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
 	$project->date_start  = $startdate;
 
 	$project->usage_task = 1;
@@ -212,7 +214,6 @@ if ( $conf->global->DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT == 0 || $project->st
 	$project_id            = $project->create($user);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_PREVENTIONPLAN_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'PP');
@@ -226,7 +227,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_FIREPERMIT_PROJECT == 0 || $project->statut
 	$project->date_c      = dol_now();
 	$currentYear          = dol_print_date(dol_now(), '%Y');
 	$fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
-	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ? $fiscalMonthStart : '1', '1', $currentYear);
+	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
 	$project->date_start  = $startdate;
 
 	$project->usage_task = 1;
@@ -239,7 +240,6 @@ if ( $conf->global->DIGIRISKDOLIBARR_FIREPERMIT_PROJECT == 0 || $project->statut
 	$project_id            = $project->create($user);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_FIREPERMIT_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'FP');
@@ -253,7 +253,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_ACCIDENT_PROJECT == 0 || $project->statut =
 	$project->date_c      = dol_now();
 	$currentYear          = dol_print_date(dol_now(), '%Y');
 	$fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
-	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ? $fiscalMonthStart : '1', '1', $currentYear);
+	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
 	$project->date_start  = $startdate;
 
 	$project->usage_task = 1;
@@ -266,7 +266,6 @@ if ( $conf->global->DIGIRISKDOLIBARR_ACCIDENT_PROJECT == 0 || $project->statut =
 	$project_id            = $project->create($user);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ACCIDENT_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'ACC');
@@ -280,7 +279,7 @@ if ( $conf->global->DIGIRISKDOLIBARR_TICKET_PROJECT == 0 || $project->statut == 
 	$project->date_c      = dol_now();
 	$currentYear          = dol_print_date(dol_now(), '%Y');
 	$fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
-	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ? $fiscalMonthStart : '1', '1', $currentYear);
+	$startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
 	$project->date_start  = $startdate;
 
 	$project->usage_task = 1;
@@ -293,16 +292,53 @@ if ( $conf->global->DIGIRISKDOLIBARR_TICKET_PROJECT == 0 || $project->statut == 
 	$project_id            = $project->create($user);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', 'TS');
 	$tags->add_type($project, 'project');
 }
 
-if (!dolibarr_get_const($db, 'DIGIRISKDOLIBARR_USERAPI_SET', 0)) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+if ( $conf->global->DIGIRISKDOLIBARR_ENVIRONMENT_PROJECT == 0 || $project->statut == 2 ) {
+    $project->ref         = $projectRef->getNextValue($third_party, $project);
+    $project->title       = $langs->trans('Environment') . ' - ' . $conf->global->MAIN_INFO_SOCIETE_NOM;
+    $project->description = $langs->trans('EnvironmentDescription');
+    $project->date_c      = dol_now();
+    $currentYear          = dol_print_date(dol_now(), '%Y');
+    $fiscalMonthStart     = $conf->global->SOCIETE_FISCAL_MONTH_START;
+    $startdate            = dol_mktime('0', '0', '0', $fiscalMonthStart ?: '1', '1', $currentYear);
+    $project->date_start  = $startdate;
 
+    $project->usage_task = 1;
+
+    $startdateAddYear      = dol_time_plus_duree($startdate, 1, 'y');
+    $startdateAddYearMonth = dol_time_plus_duree($startdateAddYear, -1, 'd');
+    $enddate               = dol_print_date($startdateAddYearMonth, 'dayrfc');
+    $project->date_end     = $enddate;
+    $project->statut       = 1;
+    $project_id            = $project->create($user);
+    dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ENVIRONMENT_PROJECT', $project_id, 'integer', 0, '', $conf->entity);
+
+    $tags = new Categorie($db);
+
+    $tags->fetch('', 'ENV');
+    $tags->add_type($project, 'project');
+
+    $url = '/projet/tasks.php?id=' . $project_id;
+
+    $sql = "UPDATE ".MAIN_DB_PREFIX."menu SET";
+    $sql .= " url='".$db->escape($url)."'";
+    $sql .= " WHERE leftmenu='digiriskenvironmentalactionplan'";
+    $sql .= " AND entity=" . $conf->entity;
+
+    $resql = $db->query($sql);
+    if (!$resql) {
+        $error = "Error ".$db->lasterror();
+        return -1;
+    }
+    header("Location: " . $_SERVER['PHP_SELF']);
+}
+
+if (!dolibarr_get_const($db, 'DIGIRISKDOLIBARR_USERAPI_SET', 0)) {
 	$usertmp            = new User($db);
 	$usertmp->lastname  = 'API';
 	$usertmp->firstname = 'REST';
@@ -324,295 +360,198 @@ if (!dolibarr_get_const($db, 'DIGIRISKDOLIBARR_USERAPI_SET', 0)) {
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERAPI_SET', $user_id, 'integer', 0, '', 0);
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_READERGROUP_SET == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_READERGROUP_SET') == 0) {
+    $userGroup->entity = $conf->entity;
+    $userGroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskReaderGroup');
+    $userGroup->note   = $langs->trans('DigiriskReaderGroupDescription');
 
-	$usergroup         = new UserGroup($db);
-	$usergroup->entity = $conf->entity;
-	$usergroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskReaderGroup');
-	$usergroup->note   = $langs->trans('DigiriskReaderGroupDescription');
+    $userGroupID = $userGroup->create($user);
 
-	$usergroup_id = $usergroup->create($user);
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights(4363020); //DigiriskDolibarr read
-		$usergroup->addrights(4363021); //DigiriskDolibarr lire
-		$usergroup->addrights(4363022); //RiskAssessmentDocument Read
-		$usergroup->addrights(4363025); //LegalDisplay Read
-		$usergroup->addrights(4363028); //InformationsSharing Read
-		$usergroup->addrights(43630211); //FirePermit Read
-		$usergroup->addrights(43630214); //Prevention Plan Read
-		$usergroup->addrights(43630217); //DigiriskElement Read
-		$usergroup->addrights(43630220); //Risk Read
-		$usergroup->addrights(43630223); //ListingRisksAction Read
-		$usergroup->addrights(43630226); //ListingRisksPhoto Read
-		$usergroup->addrights(43630229); //RiskSign Read
-		$usergroup->addrights(43630232); //Evaluator Read
-		$usergroup->addrights(43630238); //Accident Read
-		$usergroup->addrights('', 'produit', 'lire');
-		$usergroup->addrights('', 'societe', 'lire');
-		$usergroup->addrights('', 'ecm', 'read');
-		$usergroup->addrights('', 'ticket', 'read');
-		$usergroup->addrights('', 'agenda', 'myactions');
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_READERGROUP_SET', $usergroup_id, 'integer', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'DIGIRISKDOLIBARR_READERGROUP_SET', $userGroupID, 'integer', 0, '', $conf->entity);
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_READERGROUP_UPDATED == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_READERGROUP_UPDATED') >= 0 && getDolGlobalInt('DIGIRISKDOLIBARR_READERGROUP_UPDATED') < 3) {
+    $userGroupID = getDolGlobalInt('DIGIRISKDOLIBARR_READERGROUP_SET');
+    if ($userGroupID > 0) {
+        $userGroup->fetch($userGroupID);
+        switch (getDolGlobalInt('DIGIRISKDOLIBARR_READERGROUP_UPDATED')) {
+            case 0 :
+            case 2 :
+            case 3 :
+                $userGroup->addrights('', 'digiriskdolibarr', 'lire'); // DigiriskDolibarr lire
+                $userGroup->addrights('', 'digiriskdolibarr', 'read'); // DigiriskDolibarr read
 
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_READERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		$usergroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskReaderGroup');
-		$usergroup->note = $langs->trans('DigiriskReaderGroupDescription');
-		$usergroup->update($user);
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_READERGROUP_UPDATED', 1, 'integer', 0, '', $conf->entity);
+                $userGroup->addrights(43630203, 'digiriskdolibarr');  // DigiriskStandard read
+                $userGroup->addrights(43630204, 'digiriskdolibarr');  // RiskAssessmentDocument read
+                $userGroup->addrights(43630207, 'digiriskdolibarr');  // AuditReportDocument read
+                $userGroup->addrights(436302010, 'digiriskdolibarr'); // LegalDisplay read
+                $userGroup->addrights(43630213, 'digiriskdolibarr');  // InformationsSharing read
+                $userGroup->addrights(43630216, 'digiriskdolibarr');  // RegisterDocument read
+                $userGroup->addrights(43630219, 'digiriskdolibarr');  // FirePermit read
+                $userGroup->addrights(43630222, 'digiriskdolibarr');  // Prevention plan read
+                $userGroup->addrights(43630225, 'digiriskdolibarr');  // DigiriskElement read
+                $userGroup->addrights(43630228, 'digiriskdolibarr');  // Risk read
+                $userGroup->addrights(43630231, 'digiriskdolibarr');  // ListingRisksDocument read
+                $userGroup->addrights(43630234, 'digiriskdolibarr');  // ListingRisksAction read
+                $userGroup->addrights(43630237, 'digiriskdolibarr');  // ListingRisksPhoto read
+                $userGroup->addrights(43630240, 'digiriskdolibarr');  // ListingRisksEnvironmentalAction read
+                $userGroup->addrights(43630243, 'digiriskdolibarr');  // RiskSign read
+                $userGroup->addrights(43630246, 'digiriskdolibarr');  // Evaluator read
+                $userGroup->addrights(43630249, 'digiriskdolibarr');  // Accident read
+                $userGroup->addrights(43630252, 'digiriskdolibarr');  // AccidentInvestigation read
+
+                $userGroup->addrights('', 'saturne', 'lire');
+                $userGroup->addrights('', 'saturne', 'read');
+
+                $userGroup->addrights('', 'agenda', 'myactions');
+                $userGroup->addrights('', 'categorie', 'lire');
+                $userGroup->addrights('', 'ecm', 'read');
+                $userGroup->addrights('', 'projet', 'lire');
+                $userGroup->addrights('', 'societe', 'lire');
+                $userGroup->addrights('', 'societe', 'lire');
+                $userGroup->addrights(281, 'societe');                   // Societe contact lire
+                $userGroup->addrights('', 'ticket', 'read');
+
+                $readerGroupConf = 4;
+                break;
+            case 1 :
+                $userGroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskReaderGroup');
+                $userGroup->note = $langs->trans('DigiriskReaderGroupDescription');
+                $userGroup->update($user);
+
+                $readerGroupConf = 2;
+                break;
+        }
+        dolibarr_set_const($db, 'DIGIRISKDOLIBARR_READERGROUP_UPDATED', $readerGroupConf ?? 0, 'integer', 0, '', $conf->entity);
+    }
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_READERGROUP_UPDATED == 1 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_USERGROUP_SET') == 0) {
+    $userGroup->entity = $conf->entity;
+    $userGroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskUserGroup');
+    $userGroup->note   = $langs->trans('DigiriskUserGroupDescription');
 
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_READERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights(43630238); //Accident Read
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_READERGROUP_UPDATED', 2, 'integer', 0, '', $conf->entity);
+    $userGroupID = $userGroup->create($user);
+
+    dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_SET', $userGroupID, 'integer', 0, '', $conf->entity);
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_USERGROUP_SET == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_USERGROUP_UPDATED') >= 0 && getDolGlobalInt('DIGIRISKDOLIBARR_USERGROUP_UPDATED') < 4) {
+    $userGroupID = getDolGlobalInt('DIGIRISKDOLIBARR_USERGROUP_SET');
+    if ($userGroupID > 0) {
+        $userGroup->fetch($userGroupID);
+        switch (getDolGlobalInt('DIGIRISKDOLIBARR_USERGROUP_UPDATED')) {
+            case 0 :
+            case 2 :
+            case 3 :
+            case 4 :
+                $userGroup->addrights('', 'digiriskdolibarr', 'lire'); // DigiriskDolibarr lire
+                $userGroup->addrights('', 'digiriskdolibarr', 'read'); // DigiriskDolibarr read
 
-	$usergroup         = new UserGroup($db);
-	$usergroup->entity = $conf->entity;
-	$usergroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskUserGroup');
-	$usergroup->note   = $langs->trans('DigiriskUserGroupDescription');
+                $userGroup->addrights(43630203, 'digiriskdolibarr');  // DigiriskStandard read
+                $userGroup->addrights(43630204, 'digiriskdolibarr');  // RiskAssessmentDocument read
+                $userGroup->addrights(43630205, 'digiriskdolibarr');  // RiskAssessmentDocument create
+                $userGroup->addrights(43630207, 'digiriskdolibarr');  // AuditReportDocument read
+                $userGroup->addrights(43630208, 'digiriskdolibarr');  // AuditReportDocument create
+                $userGroup->addrights(436302010, 'digiriskdolibarr'); // LegalDisplay read
+                $userGroup->addrights(436302011, 'digiriskdolibarr'); // LegalDisplay create
+                $userGroup->addrights(43630213, 'digiriskdolibarr');  // InformationsSharing read
+                $userGroup->addrights(43630214, 'digiriskdolibarr');  // InformationsSharing create
+                $userGroup->addrights(43630216, 'digiriskdolibarr');  // RegisterDocument read
+                $userGroup->addrights(43630217, 'digiriskdolibarr');  // RegisterDocument create
+                $userGroup->addrights(43630219, 'digiriskdolibarr');  // FirePermit read
+                $userGroup->addrights(43630220, 'digiriskdolibarr');  // FirePermit create
+                $userGroup->addrights(43630222, 'digiriskdolibarr');  // Prevention plan read
+                $userGroup->addrights(43630223, 'digiriskdolibarr');  // Prevention plan create
+                $userGroup->addrights(43630225, 'digiriskdolibarr');  // DigiriskElement read
+                $userGroup->addrights(43630226, 'digiriskdolibarr');  // DigiriskElement create
+                $userGroup->addrights(43630228, 'digiriskdolibarr');  // Risk read
+                $userGroup->addrights(43630229, 'digiriskdolibarr');  // Risk create
+                $userGroup->addrights(43630231, 'digiriskdolibarr');  // ListingRisksDocument read
+                $userGroup->addrights(43630232, 'digiriskdolibarr');  // ListingRisksDocument create
+                $userGroup->addrights(43630234, 'digiriskdolibarr');  // ListingRisksAction read
+                $userGroup->addrights(43630235, 'digiriskdolibarr');  // ListingRisksAction create
+                $userGroup->addrights(43630237, 'digiriskdolibarr');  // ListingRisksPhoto read
+                $userGroup->addrights(43630238, 'digiriskdolibarr');  // ListingRisksPhoto create
+                $userGroup->addrights(43630240, 'digiriskdolibarr');  // ListingRisksEnvironmentalAction read
+                $userGroup->addrights(43630241, 'digiriskdolibarr');  // ListingRisksEnvironmentalAction create
+                $userGroup->addrights(43630243, 'digiriskdolibarr');  // RiskSign read
+                $userGroup->addrights(43630244, 'digiriskdolibarr');  // RiskSign create
+                $userGroup->addrights(43630246, 'digiriskdolibarr');  // Evaluator read
+                $userGroup->addrights(43630247, 'digiriskdolibarr');  // Evaluator create
+                $userGroup->addrights(43630249, 'digiriskdolibarr');  // Accident read
+                $userGroup->addrights(43630250, 'digiriskdolibarr');  // Accident create
+                $userGroup->addrights(43630252, 'digiriskdolibarr');  // AccidentInvestigation read
+                $userGroup->addrights(43630253, 'digiriskdolibarr');  // AccidentInvestigation create
 
-	$usergroup_id = $usergroup->create($user);
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights(4363020); //DigiriskDolibarr read
-		$usergroup->addrights(4363021); //DigiriskDolibarr lire
-		$usergroup->addrights(4363022); //RiskAssessmentDocument Read
-		$usergroup->addrights(4363023); //RiskAssessmentDocument Create
-		$usergroup->addrights(4363025); //LegalDisplay Read
-		$usergroup->addrights(4363026); //LegalDisplay Create
-		$usergroup->addrights(4363028); //InformationsSharing Read
-		$usergroup->addrights(4363029); //InformationsSharing Create
-		$usergroup->addrights(43630211); //FirePermit Read
-		$usergroup->addrights(43630212); //FirePermit Create
-		$usergroup->addrights(43630214); //Prevention Plan Read
-		$usergroup->addrights(43630215); //Prevention Plan Create
-		$usergroup->addrights(43630217); //DigiriskElement Read
-		$usergroup->addrights(43630218); //DigiriskElement Create
-		$usergroup->addrights(43630220); //Risk Read
-		$usergroup->addrights(43630221); //Risk Create
-		$usergroup->addrights(43630223); //ListingRisksAction Read
-		$usergroup->addrights(43630224); //ListingRisksAction Create
-		$usergroup->addrights(43630226); //ListingRisksPhoto Read
-		$usergroup->addrights(43630227); //ListingRisksPhoto Create
-		$usergroup->addrights(43630229); //RiskSign Read
-		$usergroup->addrights(43630230); //RiskSign Create
-		$usergroup->addrights(43630232); //Evaluator Read
-		$usergroup->addrights(43630233); //Evaluator Create
-		$usergroup->addrights(43630238); //Accident Read
-		$usergroup->addrights(43630239); //Accident Create
-		$usergroup->addrights('', 'produit', 'lire');
-		$usergroup->addrights('', 'produit', 'creer');
-		$usergroup->addrights('', 'societe', 'lire');
-		$usergroup->addrights('', 'societe', 'creer');
-		$usergroup->addrights('', 'ecm', 'read');
-		$usergroup->addrights('', 'ecm', 'upload');
-		$usergroup->addrights('', 'ticket', 'read');
-		$usergroup->addrights('', 'ticket', 'write');
-		$usergroup->addrights('', 'agenda', 'myactions');
-	}
+                $userGroup->addrights('', 'saturne', 'lire');
+                $userGroup->addrights('', 'saturne', 'read');
 
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_SET', $usergroup_id, 'integer', 0, '', $conf->entity);
+                $userGroup->addrights('', 'agenda', 'myactions');
+                $userGroup->addrights('', 'categorie', 'lire');
+                $userGroup->addrights('', 'categorie', 'creer');
+                $userGroup->addrights('', 'ecm', 'read');
+                $userGroup->addrights('', 'ecm', 'upload');
+                $userGroup->addrights('', 'export');
+                $userGroup->addrights('', 'projet', 'lire');
+                $userGroup->addrights('', 'projet', 'creer');
+                $userGroup->addrights('', 'societe', 'lire');
+                $userGroup->addrights('', 'societe', 'creer');
+                $userGroup->addrights(281, 'societe');                   // Societe contact lire
+                $userGroup->addrights(282, 'societe');                   // Societe contact creer
+                $userGroup->addrights('', 'ticket', 'read');
+                $userGroup->addrights('', 'ticket', 'write');
+                $userGroup->addrights(342, 'user');                      // User self creer
+                $userGroup->addrights(343, 'user');                      // User self password
+
+                $userGroupConf = 5;
+                break;
+            case 1 :
+                $userGroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskUserGroup');
+                $userGroup->note = $langs->trans('DigiriskUserGroupDescription');
+                $userGroup->update($user);
+
+                $userGroupConf = 2;
+                break;
+        }
+        dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_UPDATED', $userGroupConf ?? 0, 'integer', 0, '', $conf->entity);
+    }
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_USERGROUP_UPDATED == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_ADMINUSERGROUP_SET') == 0) {
+    $userGroup->entity = $conf->entity;
+    $userGroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskAdminUserGroup');
+    $userGroup->note   = $langs->trans('DigiriskAdminUserGroupDescription');
 
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_USERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights(4363020); //DigiriskDolibarr read
-		$usergroup->addrights(4363021); //DigiriskDolibarr lire
-		$usergroup->addrights(4363022); //RiskAssessmentDocument Read
-		$usergroup->addrights(4363023); //RiskAssessmentDocument Create
-		$usergroup->addrights(4363025); //LegalDisplay Read
-		$usergroup->addrights(4363026); //LegalDisplay Create
-		$usergroup->addrights(4363028); //InformationsSharing Read
-		$usergroup->addrights(4363029); //InformationsSharing Create
-		$usergroup->addrights(43630211); //FirePermit Read
-		$usergroup->addrights(43630212); //FirePermit Create
-		$usergroup->addrights(43630214); //Prevention Plan Read
-		$usergroup->addrights(43630215); //Prevention Plan Create
-		$usergroup->addrights(43630217); //DigiriskElement Read
-		$usergroup->addrights(43630218); //DigiriskElement Create
-		$usergroup->addrights(43630220); //Risk Read
-		$usergroup->addrights(43630221); //Risk Create
-		$usergroup->addrights(43630223); //ListingRisksAction Read
-		$usergroup->addrights(43630224); //ListingRisksAction Create
-		$usergroup->addrights(43630226); //ListingRisksPhoto Read
-		$usergroup->addrights(43630227); //ListingRisksPhoto Create
-		$usergroup->addrights(43630229); //RiskSign Read
-		$usergroup->addrights(43630230); //RiskSign Create
-		$usergroup->addrights(43630232); //Evaluator Read
-		$usergroup->addrights(43630233); //Evaluator Create
-		$usergroup->addrights(43630238); //Accident Read
-		$usergroup->addrights(43630239); //Accident Create
-		$usergroup->addrights('', 'produit', 'lire');
-		$usergroup->addrights('', 'produit', 'creer');
-		$usergroup->addrights('', 'societe', 'lire');
-		$usergroup->addrights('', 'societe', 'creer');
-		$usergroup->addrights('', 'ecm', 'read');
-		$usergroup->addrights('', 'ecm', 'upload');
-		$usergroup->addrights('', 'ticket', 'read');
-		$usergroup->addrights('', 'ticket', 'write');
-		$usergroup->addrights('', 'agenda', 'myactions');
-	}
+    $userGroupID = $userGroup->create($user);
 
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_UPDATED', 1, 'integer', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_SET', $userGroupID, 'integer', 0, '', $conf->entity);
 }
 
-if ( $conf->global->DIGIRISKDOLIBARR_USERGROUP_UPDATED == 1 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
+if (getDolGlobalInt('DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED') >= 0 && getDolGlobalInt('DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED') < 6) {
+    $userGroupID = getDolGlobalInt('DIGIRISKDOLIBARR_ADMINUSERGROUP_SET');
+    if ($userGroupID > 0) {
+        $userGroup->fetch($userGroupID);
+        switch (getDolGlobalInt('DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED')) {
+            case 0 :
+            case 2 :
+            case 3 :
+            case 4 :
+			case 5 :
+                $userGroup->addrights('', 'allmodules');
 
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_USERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		$usergroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskUserGroup');
-		$usergroup->note = $langs->trans('DigiriskUserGroupDescription');
-		$usergroup->update($user);
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_UPDATED', 2, 'integer', 0, '', $conf->entity);
-}
+                $adminUserGroupConf = 6;
+                break;
+            case 1:
+                $userGroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskAdminUserGroup');
+                $userGroup->note = $langs->trans('DigiriskAdminUserGroupDescription');
+                $userGroup->update($user);
 
-if ( $conf->global->DIGIRISKDOLIBARR_USERGROUP_UPDATED == 2 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_USERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		$usergroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskUserGroup');
-		$usergroup->note = $langs->trans('DigiriskUserGroupDescription');
-		$usergroup->update($user);
-
-		$usergroup->addrights(43630238); //Accident Read
-		$usergroup->addrights(43630239); //Accident Create
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_USERGROUP_UPDATED', 3, 'integer', 0, '', $conf->entity);
-}
-
-if ( $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_SET == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup         = new UserGroup($db);
-	$usergroup->entity = $conf->entity;
-	$usergroup->name   = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskAdminUserGroup');
-	$usergroup->note   = $langs->trans('DigiriskAdminUserGroupDescription');
-
-	$usergroup_id = $usergroup->create($user);
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights(4363020); //DigiriskDolibarr read
-		$usergroup->addrights(4363021); //DigiriskDolibarr lire
-		$usergroup->addrights('', 'digiriskdolibarr', 'riskassessmentdocument'); //RiskAssessmentDocument
-		$usergroup->addrights('', 'digiriskdolibarr', 'legaldisplay');           //LegalDisplay
-		$usergroup->addrights('', 'digiriskdolibarr', 'informationssharing');    //InformationsSharing
-		$usergroup->addrights('', 'digiriskdolibarr', 'firepermit');             //FirePermit
-		$usergroup->addrights('', 'digiriskdolibarr', 'preventionplan');         //Prevention Plan
-		$usergroup->addrights('', 'digiriskdolibarr', 'digiriskelement');        //DigiriskElement
-		$usergroup->addrights('', 'digiriskdolibarr', 'risk');                   //Risk
-		$usergroup->addrights('', 'digiriskdolibarr', 'listingrisksaction');     //ListingRisksAction
-		$usergroup->addrights('', 'digiriskdolibarr', 'listingrisksphoto');      //ListingRisksPhoto
-		$usergroup->addrights('', 'digiriskdolibarr', 'risksign');               //RiskSign
-		$usergroup->addrights('', 'digiriskdolibarr', 'evaluator');              //Evaluator
-		$usergroup->addrights('', 'digiriskdolibarr', 'api');                    //API
-		$usergroup->addrights('', 'digiriskdolibarr', 'adminpage');              //AdminPage
-		$usergroup->addrights('', 'digiriskdolibarr', 'accident'); 			  //Accident
-		$usergroup->addrights('', 'societe');
-		$usergroup->addrights('', 'ecm');
-		$usergroup->addrights('', 'ticket');
-		$usergroup->addrights('', 'agenda');
-		$usergroup->addrights('', 'projet');
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_SET', $usergroup_id, 'integer', 0, '', $conf->entity);
-}
-
-if ( $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED == 0 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights('', 'societe');
-		$usergroup->addrights('', 'ecm');
-		$usergroup->addrights('', 'ticket');
-		$usergroup->addrights('', 'agenda');
-		$usergroup->addrights('', 'projet');
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED', 1, 'integer', 0, '', $conf->entity);
-}
-
-if ( $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED == 1 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		$usergroup->name = $conf->global->MAIN_INFO_SOCIETE_NOM . ' - ' . $langs->trans('DigiriskAdminUserGroup');
-		$usergroup->note = $langs->trans('DigiriskAdminUserGroupDescription');
-		$usergroup->update($user);
-	}
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED', 2, 'integer', 0, '', $conf->entity);
-}
-
-if ( $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED == 2 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_SET;
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		//Rights digiriskdolibarr
-		$usergroup->addrights('', 'digiriskdolibarr', 'accident'); //Accident
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED', 3, 'integer', 0, '', $conf->entity);
-}
-
-if ( $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED == 3 ) {
-	require_once DOL_DOCUMENT_ROOT . '/user/class/usergroup.class.php';
-
-	$usergroup = new UserGroup($db);
-	$usergroup_id = $conf->global->DIGIRISKDOLIBARR_ADMINUSERGROUP_SET;
-
-	if ($usergroup_id > 0) {
-		$usergroup->fetch($usergroup_id);
-		$usergroup->addrights('', 'projet');
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED', 4, 'integer', 0, '', $conf->entity);
+                $adminUserGroupConf = 2;
+                break;
+        }
+        dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ADMINUSERGROUP_UPDATED', $adminUserGroupConf ?? 0, 'integer', 0, '', $conf->entity);
+    }
 }
 
 if ($conf->global->DIGIRISKDOLIBARR_DIGIRISKELEMENT_TRASH_UPDATED == 0) {
@@ -716,7 +655,7 @@ if ($conf->global->DIGIRISKDOLIBARR_CONF_BACKWARD_COMPATIBILITY == 0) {
 
 	// CONST LISTING RISKS ACTION
 	dolibarr_set_const($db, 'MAIN_AGENDA_ACTIONAUTO_LISTINGRISKSACTION_CREATE', 1, 'integer', 0, '', $conf->entity);
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_LISTINGRISKSACTION_ADDON', 'mod_listingrisksaction_standard', 'chaine', 0, '', $conf->entity);
+	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_LISTINGRISKSACTION_ADDON', 'mod_listingrisksenvironmentalaction_standard', 'chaine', 0, '', $conf->entity);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_LISTINGRISKSACTION_ADDON_ODT_PATH', 'DOL_DOCUMENT_ROOT/custom/digiriskdolibarr/documents/doctemplates/listingrisksaction/', 'chaine', 0, '', $conf->entity);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_LISTINGRISKSACTION_CUSTOM_ADDON_ODT_PATH', 'DOL_DATA_ROOT/ecm/digiriskdolibarr/listingrisksaction/', 'chaine', 0, '', $conf->entity);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_LISTINGRISKSACTION_DEFAULT_MODEL', 'listingrisksaction_odt', 'chaine', 0, '', $conf->entity);
@@ -868,7 +807,7 @@ if ($conf->global->DIGIRISKDOLIBARR_CONF_BACKWARD_COMPATIBILITY == 0) {
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_SIGNATURE_SHOW_COMPANY_LOGO', dolibarr_get_const($db,'DIGIRISKDOLIBARR_SIGNATURE_SHOW_COMPANY_LOGO'), 'integer', 0, '', $conf->entity);
 
 	//CONST TICKET & REGISTERS
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_EXTRAFIELDS', dolibarr_get_const($db,'DIGIRISKDOLIBARR_TICKET_EXTRAFIELDS'), 'integer', 0, '', $conf->entity);
+	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_EXTRAFIELDS', dolibarr_get_const($db,'DIGIRISKDOLIBARR_TICKET_EXTRAFIELDS'), 'integer', 0, '', 0);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_CATEGORIES_CREATED', dolibarr_get_const($db,'DIGIRISKDOLIBARR_TICKET_CATEGORIES_CREATED'), 'integer', 0, '', $conf->entity);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_ENABLE_PUBLIC_INTERFACE', dolibarr_get_const($db,'DIGIRISKDOLIBARR_TICKET_ENABLE_PUBLIC_INTERFACE'), 'integer', 0, '', $conf->entity);
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_TICKET_SHOW_COMPANY_LOGO', dolibarr_get_const($db,'DIGIRISKDOLIBARR_TICKET_SHOW_COMPANY_LOGO'), 'integer', 0, '', $conf->entity);
@@ -882,8 +821,8 @@ if ($conf->global->DIGIRISKDOLIBARR_CONF_BACKWARD_COMPATIBILITY == 0) {
 
 	// CONST ACCIDENT LINE
 	dolibarr_set_const($db, 'MAIN_AGENDA_ACTIONAUTO_ACCIDENT_WORKSTOP_CREATE', 1, 'integer', 0, '', $conf->entity);
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ACCIDENT_WORKSTOP_ADDON', 'mod_accident_workstop_standard', 'chaine', 0, '', $conf->entity);
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ACCIDENT_LESION_ADDON', 'mod_accident_lesion_standard', 'chaine', 0, '', $conf->entity);
+	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ACCIDENTWORKSTOP_ADDON', 'mod_accidentworkstop_standard', 'chaine', 0, '', $conf->entity);
+	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ACCIDENTLESION_ADDON', 'mod_accidentlesion_standard', 'chaine', 0, '', $conf->entity);
 
 	// GENERAL CONSTS
 	dolibarr_set_const($db, 'MAIN_USE_EXIF_ROTATION', 1, 'integer', 0, '', $conf->entity);
@@ -933,7 +872,6 @@ if ($conf->global->DIGIRISKDOLIBARR_ENCODE_BACKWARD_COMPATIBILITY == 0) {
 		$extrafields->update('digiriskdolibarr_ticket_phone', $langs->transnoentities("Phone"), 'phone', '', 'ticket', 0, 0, 2200, '', 1, '', 1);
 	}
 
-	require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 	$tags = new Categorie($db);
 
 	$tags->fetch('', $langs->trans('SST'));
@@ -971,7 +909,7 @@ if ($conf->global->DIGIRISKDOLIBARR_ENCODE_BACKWARD_COMPATIBILITY == 0) {
 
 	$societe   = new Societe($db);
 	$resources = new DigiriskResources($db);
-	$rights_defenderID = $resources->digirisk_dolibarr_fetch_resource('RightsDefender');
+	$rights_defenderID = $resources->fetchDigiriskResource('RightsDefender');
 	$societe->fetch($rights_defenderID);
 	$societe->name = $langs->transnoentities('RightsDefender') . ' - ' . $conf->global->MAIN_INFO_SOCIETE_NOM;
 	$societe->update(0, $user);
@@ -1011,9 +949,9 @@ if ($conf->global->DIGIRISKDOLIBARR_ENCODE_BACKWARD_COMPATIBILITY == 0) {
 		$accident->update($user);
 	}
 
-	require_once __DIR__ . '/../../class/digirisksignature.class.php';
+	require_once __DIR__ . '/../../../saturne/class/saturnesignature.class.php';
 
-	$signatory = new DigiriskSignature($db);
+	$signatory = new SaturneSignature($db, $moduleNameLowerCase);
 
 	$signatories = $signatory->fetchAll();
 	foreach ($signatories as $signatory) {
@@ -1037,47 +975,6 @@ if ($conf->global->DIGIRISKDOLIBARR_ENCODE_BACKWARD_COMPATIBILITY == 0) {
 	}
 
 	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_ENCODE_BACKWARD_COMPATIBILITY', 1, 'integer', 0, '', $conf->entity);
-}
-
-if ($conf->global->DIGIRISKDOLIBARR_CUSTOM_DOCUMENTS_SET == 0) {
-	require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmfiles.class.php';
-	require_once DOL_DOCUMENT_ROOT . '/core/lib/functions.lib.php';
-
-	$ecmfile = new EcmFiles($db);
-
-	$types = array(
-		'LegalDisplay' 				=> 'legaldisplay',
-		'InformationsSharing' 		=> 'informationssharing',
-		'ListingRisksAction' 		=> 'listingrisksaction',
-		'ListingRisksPhoto' 		=> 'listingrisksphoto',
-		'GroupmentDocument' 		=> 'groupmentdocument',
-		'WorkUnitDocument' 			=> 'workunitdocument',
-		'RiskAssessmentDocument' 	=> 'riskassessmentdocument',
-		'PreventionPlan' 			=> 'preventionplandocument',
-		'FirePermit' 				=> 'firepermitdocument',
-		'Ticket' 					=> 'ticketdocument'
-	);
-
-   	foreach ($types as $documentType) {
-		dolibarr_get_const($db, 'DIGIRISKDOLIBARR_' . strtoupper($documentType) . '_CUSTOM_ADDON_ODT_PATH');
-		dolibarr_set_const($db, 'DIGIRISKDOLIBARR_' . strtoupper($documentType) . '_CUSTOM_ADDON_ODT_PATH', 'DOL_DATA_ROOT' . (($conf->entity == 1 ) ? '/' : '/' . $conf->entity . '/') . 'ecm/digiriskdolibarr/'. $documentType . '/', 'chaine', 0, '', $conf->entity);
-
-		$srcfullpath  = DOL_DOCUMENT_ROOT . '/custom/digiriskdolibarr/documents/doctemplates/' . $documentType . '/template_' . $documentType . '.odt';
-		$ecmdir       = $conf->ecm->multidir_output[$conf->entity?:1];
-		$destfullpath = $ecmdir . '/digiriskdolibarr/' . $documentType . '/template_' . $documentType . '_custom.odt';
-
-		$result = dol_copy($srcfullpath, $destfullpath, 0, 0);
-		if ($result > 0) {
-			$ecmfile->label           = md5_file(dol_osencode($destfullpath));
-			$ecmfile->filepath        = (($conf->entity == 1 ) ? '' : $conf->entity . '/') . 'ecm/digiriskdolibarr/' . $documentType;
-			$ecmfile->filename        = 'template_' . $documentType . '_custom.odt';
-			$ecmfile->fullpath_orig   = 'template_' . $documentType . '_custom.odt';
-			$ecmfile->gen_or_uploaded = 'uploaded';
-			$ecmfile->create($user);
-		}
-	}
-
-	dolibarr_set_const($db, 'DIGIRISKDOLIBARR_CUSTOM_DOCUMENTS_SET', 1, 'integer', 0, '', $conf->entity);
 }
 
 if ($conf->global->DIGIRISKDOLIBARR_SECURITY_SOCIAL_CONF_UPDATED == 0) {

@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,27 +21,19 @@
  *	\brief      Tools page of digiriskdolibarr top menu
  */
 
-// Load Dolibarr environment
-$res = 0;
-// Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)
-if ( ! $res && ! empty($_SERVER["CONTEXT_DOCUMENT_ROOT"])) $res = @include $_SERVER["CONTEXT_DOCUMENT_ROOT"] . "/main.inc.php";
-// Try main.inc.php into web root detected using web root calculated from SCRIPT_FILENAME
-$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME']; $tmp2 = realpath(__FILE__); $i = strlen($tmp) - 1; $j = strlen($tmp2) - 1;
-while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) { $i--; $j--; }
-if ( ! $res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1)) . "/main.inc.php")) $res          = @include substr($tmp, 0, ($i + 1)) . "/main.inc.php";
-if ( ! $res && $i > 0 && file_exists(dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php")) $res = @include dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php";
-// Try main.inc.php using relative path
-if ( ! $res && file_exists("../../main.inc.php")) $res    = @include "../../main.inc.php";
-if ( ! $res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
-if ( ! $res) die("Include of main fails");
+// Load DigiriskDolibarr environment
+if (file_exists('../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../digiriskdolibarr.main.inc.php';
+} elseif (file_exists('../../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../../digiriskdolibarr.main.inc.php';
+} else {
+	die('Include of digiriskdolibarr main fails');
+}
 
-global $conf, $db, $langs, $user;
-
-$taskRefClass = $conf->global->PROJECT_TASK_ADDON;
+global $conf, $db, $langs, $moduleNameLowerCase, $user;
 
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
-require_once DOL_DOCUMENT_ROOT . '/core/modules/project/task/' . $taskRefClass . '.php';
 
 require_once __DIR__ . '/../class/digiriskstandard.class.php';
 require_once __DIR__ . '/../class/digiriskelement.class.php';
@@ -50,17 +42,9 @@ require_once __DIR__ . '/../class/digiriskelement/workunit.class.php';
 require_once __DIR__ . '/../class/riskanalysis/risk.class.php';
 require_once __DIR__ . '/../class/riskanalysis/riskassessment.class.php';
 require_once __DIR__ . '/../class/riskanalysis/risksign.class.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/groupment/mod_groupment_standard.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/groupment/mod_groupment_sirius.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/workunit/mod_workunit_standard.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/workunit/mod_workunit_canopus.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/riskanalysis/risk/mod_risk_standard.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/riskanalysis/riskassessment/mod_riskassessment_standard.php';
-require_once __DIR__ . '/../core/modules/digiriskdolibarr/riskanalysis/risksign/mod_risksign_standard.php';
-require_once __DIR__ . '/../core/tpl/digirisk_security_checks.php';
 
 // Load translation files required by the page
-$langs->loadLangs(array("digiriskdolibarr@digiriskdolibarr"));
+saturne_load_langs();
 
 // Parameters
 $action     = GETPOST('action', 'alpha');
@@ -77,22 +61,34 @@ $workUnit             = new WorkUnit($db);
 $risk                 = new Risk($db);
 $riskAssessment       = new RiskAssessment($db);
 $risksign             = new RiskSign($db);
-$task                 = new DigiriskTask($db);
+$task                 = new SaturneTask($db);
 $extrafields          = new ExtraFields($db);
-$refGroupmentMod      = new $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON();
-$refWorkUnitMod       = new $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON();
-$refRiskMod           = new $conf->global->DIGIRISKDOLIBARR_RISK_ADDON();
-$refRiskAssessmentMod = new $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON();
-$refRiskSignMod       = new $conf->global->DIGIRISKDOLIBARR_RISKSIGN_ADDON();
-$refTaskMod           = new $taskRefClass();
 
-$upload_dir = $conf->digiriskdolibarr->multidir_output[isset($conf->entity) ? $conf->entity : 1];
+$numberingModules = [
+    'digiriskelement/groupment'   => $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON,
+    'digiriskelement/workunit'    => $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON,
+    'riskanalysis/risk'           => $conf->global->DIGIRISKDOLIBARR_RISK_ADDON,
+    'riskanalysis/riskassessment' => $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON,
+    'riskanalysis/risksign'       => $conf->global->DIGIRISKDOLIBARR_RISKSIGN_ADDON
+];
 
-// Security check
+list ($refGroupmentMod, $refWorkUnitMod, $refRiskMod, $refRiskAssessmentMod, $refRiskSignMod) = saturne_require_objects_mod($numberingModules, $moduleNameLowerCase);
+
+$numberingModuleName = [
+	'project/task' => $conf->global->PROJECT_TASK_ADDON,
+];
+list($refTaskMod) = saturne_require_objects_mod($numberingModuleName, $moduleNameLowerCase);
+
+$upload_dir = $conf->digiriskdolibarr->multidir_output[$conf->entity ?? 1];
+
+$dangerCategories        = Risk::getDangerCategories();
+$environmentalCategories = Risk::getDangerCategories('riskenvironmental');
+
+// Security check - Protection if external user
 $permissiontoread = $user->rights->digiriskdolibarr->adminpage->read;
 $permtoupload     = $user->rights->ecm->upload;
 
-if ( ! $user->rights->digiriskdolibarr->adminpage->read) accessforbidden();
+saturne_check_access($permissiontoread);
 
 /*
  * Actions
@@ -137,7 +133,6 @@ if (GETPOST('dataMigrationImport', 'alpha') && ! empty($conf->global->MAIN_UPLOA
 
 			$json                = file_get_contents($filedir . $filename);
 			$digiriskExportArray = json_decode($json, true);
-			$digiriskExportArray = end($digiriskExportArray);
 
 			$it = new RecursiveIteratorIterator(new RecursiveArrayIterator($digiriskExportArray['digiriskelements']['digiriskelements']));
 			foreach ($it as $key => $v) {
@@ -222,19 +217,22 @@ if (GETPOST('dataMigrationImportRisks', 'alpha') && ! empty($conf->global->MAIN_
 
 			//Risk
 			foreach ($digiriskExportArray['risks'] as $digiriskExportRisk) {
-				$risk->ref        = $refRiskMod->getNextValue($risk);
-				$risk->category   = $risk->get_danger_category_position_by_name($digiriskExportRisk['danger_category']['name']);
-				$risk->fk_element = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRisk['parent_id']);
-				$risk->fk_projet  = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+				$risk->ref           = $refRiskMod->getNextValue($risk);
+                $risk->status        = Risk::STATUS_VALIDATED;
+				$risk->category      = $risk->getDangerCategoryPositionByName($digiriskExportRisk['danger_category']['name'], $risk->type);
+				$risk->fk_element    = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRisk['parent_id']);
+				$risk->fk_projet     = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+                $risk->date_creation = $digiriskExportRisk['evaluation']['date']['raw'];
 
-				if ( ! $error) {
+				if (!$error) {
 					$result = $risk->create($user, true);
 					if ($result > 0) {
 						$riskAssessment->ref                 = $refRiskAssessmentMod->getNextValue($riskAssessment);
 						$riskAssessment->date_riskassessment = $digiriskExportRisk['evaluation']['date']['raw'];
-						$riskAssessment->cotation            = $digiriskExportRisk['current_equivalence'];
-						$riskAssessment->status              = 1;
-						$riskAssessment->fk_risk             = $risk->id;
+                        $riskAssessment->date_creation       = $digiriskExportRisk['evaluation']['date']['raw'];
+                        $riskAssessment->cotation            = $digiriskExportRisk['current_equivalence'];
+                        $riskAssessment->status              = RiskAssessment::STATUS_VALIDATED;
+                        $riskAssessment->fk_risk             = $risk->id;
 
 						if ($digiriskExportRisk['evaluation_method']['name'] == 'Evarisk') {
 							$riskassessment_variables = array_values($digiriskExportRisk['evaluation']['variables']);
@@ -323,7 +321,7 @@ if (GETPOST('dataMigrationImportRiskSigns', 'alpha') && ! empty($conf->global->M
 			//RiskSign
 			foreach ($digiriskExportArray['risksigns'] as $digiriskExportRiskSign) {
 				$risksign->ref         = $refRiskSignMod->getNextValue($risksign);
-				$risksign->category    = $risksign->get_risksign_category_position_by_name($digiriskExportRiskSign['recommendation_category']['name']);
+				$risksign->category    = $risksign->getRiskSignCategoryPositionByName($digiriskExportRiskSign['recommendation_category']['name']);
 				$risksign->description = $digiriskExportRiskSign['comment']['content'];
 				$risksign->fk_element  = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRiskSign['parent_id']);
 
@@ -420,18 +418,21 @@ if (GETPOST('dataMigrationImportGlobal', 'alpha') && ! empty($conf->global->MAIN
 
 			//Risk
 			foreach ($digiriskExportArray['risks'] as $digiriskExportRisk) {
-				$risk->ref        = $refRiskMod->getNextValue($risk);
-				$risk->category   = $risk->get_danger_category_position_by_name($digiriskExportRisk['danger_category']['name']);
-				$risk->fk_element = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRisk['parent_id']);
-				$risk->fk_projet  = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+				$risk->ref           = $refRiskMod->getNextValue($risk);
+                $risk->status        = Risk::STATUS_VALIDATED;
+				$risk->category      = $risk->getDangerCategoryPositionByName($digiriskExportRisk['danger_category']['name'], $risk->type);
+				$risk->fk_element    = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRisk['parent_id']);
+				$risk->fk_projet     = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+                $risk->date_creation = $digiriskExportRisk['evaluation']['date']['raw'];
 
-				if ( ! $error) {
+                if (!$error) {
 					$result = $risk->create($user, true);
 					if ($result > 0) {
 						$riskAssessment->ref                 = $refRiskAssessmentMod->getNextValue($riskAssessment);
-						$riskAssessment->date_riskassessment = $digiriskExportRisk['evaluation']['date']['raw'];
+                        $riskAssessment->date_riskassessment = $digiriskExportRisk['evaluation']['date']['raw'];
+                        $riskAssessment->date_creation       = $digiriskExportRisk['evaluation']['date']['raw'];
 						$riskAssessment->cotation            = $digiriskExportRisk['current_equivalence'];
-						$riskAssessment->status              = 1;
+						$riskAssessment->status              = RiskAssessment::STATUS_VALIDATED;
 						$riskAssessment->fk_risk             = $risk->id;
 
 						if ($digiriskExportRisk['evaluation_method']['name'] == 'Evarisk') {
@@ -469,7 +470,7 @@ if (GETPOST('dataMigrationImportGlobal', 'alpha') && ! empty($conf->global->MAIN
 			//RiskSign
 			foreach ($digiriskExportArray['risksigns'] as $digiriskExportRiskSign) {
 				$risksign->ref         = $refRiskSignMod->getNextValue($risksign);
-				$risksign->category    = $risksign->get_risksign_category_position_by_name($digiriskExportRiskSign['recommendation_category']['name']);
+				$risksign->category    = $risksign->getRiskSignCategoryPositionByName($digiriskExportRiskSign['recommendation_category']['name']);
 				$risksign->description = $digiriskExportRiskSign['comment']['content'];
 				$risksign->fk_element  = $digiriskElement->fetch_id_from_wp_digi_id($digiriskExportRiskSign['parent_id']);
 
@@ -520,6 +521,7 @@ if (GETPOST('dataMigrationExportGlobal', 'alpha') && ! empty($conf->global->MAIN
 					$risksExportArray['status']      = $risksingle->status;
 					$risksExportArray['category']    = $risksingle->category;
 					$risksExportArray['description'] = $risksingle->description;
+                    $risksExportArray['type']        = $risksingle->type;
 					$risksExportArray['fk_element']  = $risksingle->fk_element;
 					$risksExportArray['fk_projet']   = $risksingle->fk_projet;
 
@@ -550,7 +552,7 @@ if (GETPOST('dataMigrationExportGlobal', 'alpha') && ! empty($conf->global->MAIN
 
 					// Tasks data
 					$risk->fetch($risksingle->id);
-					$alltasks = $risk->get_related_tasks($risk);
+					$alltasks = $risk->getRelatedTasks($risk);
 					if (is_array($alltasks) && !empty($alltasks)) {
 						foreach ($alltasks as $tasksingle) {
 							$tasksExportArray['rowid']              = $tasksingle->id;
@@ -620,164 +622,179 @@ if (GETPOST('dataMigrationExportGlobal', 'alpha') && ! empty($conf->global->MAIN
 	}
 }
 
-if (GETPOST('dataMigrationImportGlobalDolibarr', 'alpha') && ! empty($conf->global->MAIN_UPLOAD_DOC)) {
+if ($action == 'import_global_dolibarr' && ! empty($conf->global->MAIN_UPLOAD_DOC)) {
 	// Submit file
-	if ( ! empty($_FILES)) {
-		if ( ! preg_match('/dolibarr_global_export.zip/', $_FILES['dataMigrationImportGlobalDolibarrfile']['name'][0]) || $_FILES['dataMigrationImportGlobalDolibarrfile']['size'][0] < 1) {
-			setEventMessages($langs->trans('ErrorFileNotWellFormattedZIP'), null, 'errors');
+    $actionError = [];
+    if ( ! empty($_FILES)) {
+		if ( ! preg_match('/dolibarr_global_export.zip/', $_FILES['file']['name'][0]) || $_FILES['file']['size'][0] < 1) {
+            $actionError[] = $langs->trans('ErrorFileNotWellFormattedZIP');
 		} else {
-			if (is_array($_FILES['dataMigrationImportGlobalDolibarrfile']['tmp_name'])) $userfiles = $_FILES['dataMigrationImportGlobalDolibarrfile']['tmp_name'];
-			else $userfiles                                                               = array($_FILES['dataMigrationImportGlobalDolibarrfile']['tmp_name']);
 
-			foreach ($userfiles as $key => $userfile) {
-				if (empty($_FILES['dataMigrationImportGlobalDolibarrfile']['tmp_name'][$key])) {
-					$error++;
-					if ($_FILES['dataMigrationImportGlobalDolibarrfile']['error'][$key] == 1 || $_FILES['dataMigrationImportGlobalDolibarrfile']['error'][$key] == 2) {
-						setEventMessages($langs->trans('ErrorFileSizeTooLarge'), null, 'errors');
-					} else {
-						setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("File")), null, 'errors');
-					}
-				}
-			}
+            if (empty($_FILES['file']['tmp_name'][0])) {
+                $error++;
+                if ($_FILES['file']['error'][0] == 1 || $_FILES['file']['error'][0] == 2) {
+                    $actionError[] = $langs->trans('ErrorFileSizeTooLarge');
+                } else {
+                    $actionError[] = $langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("File"));
+                }
+            }
 
 			if ( ! $error) {
 				$filedir = $upload_dir . '/temp/';
 				if ( ! empty($filedir)) {
-					$result = dol_add_file_process($filedir, 0, 1, 'dataMigrationImportGlobalDolibarrfile', '', null, '', 0, null);
+					$result = dol_add_file_process($filedir, 0, 1, 'file', '', null, '', 0, null);
 				}
 			}
 
 			if ($result > 0) {
 				$zip = new ZipArchive;
-				if ($zip->open($filedir . $_FILES['dataMigrationImportGlobalDolibarrfile']['name'][0]) === TRUE) {
+				if ($zip->open($filedir . $_FILES['file']['name'][0]) === TRUE) {
 					$zip->extractTo($filedir);
 					$zip->close();
 				}
 			}
 
-			$filename = preg_replace( '/\.zip/', '.json', $_FILES['dataMigrationImportGlobalDolibarrfile']['name'][0]);
+			$filename = preg_replace( '/\.zip/', '.json', $_FILES['file']['name'][0]);
 
 			$json                = file_get_contents($filedir . $filename);
 			$digiriskExportArray = json_decode($json, true);
 
-			if (is_array($digiriskExportArray['digiriskelements']) && !empty($digiriskExportArray['digiriskelements'])) {
-				foreach ($digiriskExportArray['digiriskelements'] as $digiriskelementsingle) {
-					if ($digiriskelementsingle['element_type'] == 'groupment') {
-						$digiriskElement->ref = $refGroupmentMod->getNextValue($digiriskElement);
-					} elseif ($digiriskelementsingle['element_type'] == 'workunit') {
-						$digiriskElement->ref = $refWorkUnitMod->getNextValue($digiriskElement);
-					}
-					$digiriskElement->label            = $digiriskelementsingle['label'];
-					$digiriskElement->status           = $digiriskelementsingle['status'];
-					$digiriskElement->description      = $digiriskelementsingle['description'];
-					$digiriskElement->element          = $digiriskelementsingle['element_type'];
-					$digiriskElement->element_type     = $digiriskelementsingle['element_type'];
-					$digiriskElement->photo            = $digiriskelementsingle['photo'];
-					$digiriskElement->show_in_selector = $digiriskelementsingle['show_in_selector'];
-					$digiriskElement->ranks            = $digiriskelementsingle['ranks'];
+            if ($digiriskExportArray != null) {
+                if (is_array($digiriskExportArray['digiriskelements']) && !empty($digiriskExportArray['digiriskelements'])) {
+                    foreach ($digiriskExportArray['digiriskelements'] as $digiriskelementsingle) {
+                        if ($digiriskelementsingle['element_type'] == 'groupment') {
+                            $digiriskElement->ref = $refGroupmentMod->getNextValue($digiriskElement);
+                        } elseif ($digiriskelementsingle['element_type'] == 'workunit') {
+                            $digiriskElement->ref = $refWorkUnitMod->getNextValue($digiriskElement);
+                        }
+                        $digiriskElement->label = $digiriskelementsingle['label'];
+                        $digiriskElement->status = $digiriskelementsingle['status'];
+                        $digiriskElement->description = $digiriskelementsingle['description'];
+                        $digiriskElement->element = $digiriskelementsingle['element_type'];
+                        $digiriskElement->element_type = $digiriskelementsingle['element_type'];
+                        $digiriskElement->photo = $digiriskelementsingle['photo'];
+                        $digiriskElement->show_in_selector = $digiriskelementsingle['show_in_selector'];
+                        $digiriskElement->ranks = $digiriskelementsingle['ranks'];
 
-					$digiriskElement->array_options['wp_digi_id'] = $digiriskelementsingle['rowid'];
-					$digiriskElement->array_options['entity']     = $conf->entity;
+                        $digiriskElement->array_options['wp_digi_id'] = $digiriskelementsingle['rowid'];
+                        $digiriskElement->array_options['entity'] = $conf->entity;
 
-					$digiriskElement->fk_parent = $digiriskElement->fetch_id_from_wp_digi_id($digiriskelementsingle['fk_parent']) ?: 0;
+                        $digiriskElement->fk_parent = $digiriskElement->fetch_id_from_wp_digi_id($digiriskelementsingle['fk_parent']) ?: 0;
 
-					$digiriskelementid = $digiriskElement->create($user);
+                        $digiriskelementid = $digiriskElement->create($user);
 
-					//Risk
-					if (array_key_exists('risks', $digiriskelementsingle)) {
-						foreach ($digiriskelementsingle['risks'] as $digiriskExportRisk) {
-							$risk->ref         = $refRiskMod->getNextValue($risk);
-							$risk->status      = $digiriskExportRisk['status'];
-							$risk->category    = $digiriskExportRisk['category'];
-							$risk->description = $digiriskExportRisk['description'];
-							$risk->fk_element  = $digiriskelementid;
-							$risk->fk_projet   = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+                        //Risk
+                        if (array_key_exists('risks', $digiriskelementsingle)) {
+                            foreach ($digiriskelementsingle['risks'] as $digiriskExportRisk) {
+                                $risk->ref = $refRiskMod->getNextValue($risk);
+                                $risk->status = $digiriskExportRisk['status'];
+                                $risk->category = $digiriskExportRisk['category'];
+                                $risk->description = $digiriskExportRisk['description'];
+                                $risk->type = $digiriskExportRisk['type'];
+                                $risk->fk_element = $digiriskelementid;
+                                $risk->fk_projet = $digiriskExportRisk['type'] == 'risk' ? $conf->global->DIGIRISKDOLIBARR_DU_PROJECT : $conf->global->DIGIRISKDOLIBARR_ENVIRONMENT_PROJECT;
 
-							if ( ! $error) {
-								$result = $risk->create($user, true);
-								if ($result > 0) {
-									if (array_key_exists('riskassessments', $digiriskExportRisk)) {
-										foreach ($digiriskExportRisk['riskassessments'] as $digiriskExportRiskAssessement) {
-											$riskAssessment->ref                 = $refRiskAssessmentMod->getNextValue($riskAssessment);
-											$riskAssessment->status              = $digiriskExportRiskAssessement['status'];
-											$riskAssessment->method              = $digiriskExportRiskAssessement['method'];
-											$riskAssessment->cotation            = $digiriskExportRiskAssessement['cotation'];
-											$riskAssessment->gravite             = $digiriskExportRiskAssessement['gravite'];
-											$riskAssessment->protection          = $digiriskExportRiskAssessement['protection'];
-											$riskAssessment->occurrence          = $digiriskExportRiskAssessement['occurrence'];
-											$riskAssessment->formation           = $digiriskExportRiskAssessement['formation'];
-											$riskAssessment->exposition          = $digiriskExportRiskAssessement['exposition'];
-											$riskAssessment->date_riskassessment = $digiriskExportRiskAssessement['date_riskassessment'];
-											$riskAssessment->comment             = $digiriskExportRiskAssessement['comment'];
-											$riskAssessment->photo               = $digiriskExportRiskAssessement['photo'];
-											$riskAssessment->fk_risk             = $risk->id;
+                                if (!$error) {
+                                    $result = $risk->create($user, true);
+                                    if ($result > 0) {
+                                        if (array_key_exists('riskassessments', $digiriskExportRisk)) {
+                                            foreach ($digiriskExportRisk['riskassessments'] as $digiriskExportRiskAssessement) {
+                                                $riskAssessment->ref = $refRiskAssessmentMod->getNextValue($riskAssessment);
+                                                $riskAssessment->status = $digiriskExportRiskAssessement['status'];
+                                                $riskAssessment->method = $digiriskExportRiskAssessement['method'];
+                                                $riskAssessment->cotation = $digiriskExportRiskAssessement['cotation'];
+                                                $riskAssessment->gravite = $digiriskExportRiskAssessement['gravite'];
+                                                $riskAssessment->protection = $digiriskExportRiskAssessement['protection'];
+                                                $riskAssessment->occurrence = $digiriskExportRiskAssessement['occurrence'];
+                                                $riskAssessment->formation = $digiriskExportRiskAssessement['formation'];
+                                                $riskAssessment->exposition = $digiriskExportRiskAssessement['exposition'];
+                                                $riskAssessment->date_riskassessment = $digiriskExportRiskAssessement['date_riskassessment'];
+                                                $riskAssessment->comment = $digiriskExportRiskAssessement['comment'];
+                                                $riskAssessment->photo = $digiriskExportRiskAssessement['photo'];
+                                                $riskAssessment->fk_risk = $risk->id;
 
-											$result2 = $riskAssessment->create($user, true, false);
+                                                $result2 = $riskAssessment->create($user, true, false);
 
-											if ($result2 < 0) {
-												// Creation evaluation KO
-												if ( ! empty($riskAssessment->errors)) setEventMessages('', $riskAssessment->errors, 'errors');
-												else setEventMessages($riskAssessment->error, array(), 'errors');
-											}
-										}
-									}
-									if (array_key_exists('tasks', $digiriskExportRisk)) {
-										foreach ($digiriskExportRisk['tasks'] as $digiriskExportTask) {
-											$task->ref                      = $refTaskMod->getNextValue('', $task);
-											$task->date_start               = $digiriskExportTask['date_start'];
-											$task->date_end                 = $digiriskExportTask['date_end'];
-											$task->label                    = $digiriskExportTask['label'];
-											$task->description              = $digiriskExportTask['description'];
-											$task->duration_effective       = $digiriskExportTask['duration_effective'];
-											$task->planned_workload         = $digiriskExportTask['planned_workload'];
-											$task->progress                 = $digiriskExportTask['progress'];
-											$task->priority                 = $digiriskExportTask['priority'];
-											$task->budget_amount            = $digiriskExportTask['budget_amount'];
-										//	$task->fk_statut                = $digiriskExportTask['fk_statut'];
-											$task->note_public              = $digiriskExportTask['note_public'];
-											$task->note_private             = $digiriskExportTask['note_private'];
-											$task->fk_project               = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
-											$task->array_options['fk_risk'] = $risk->id;
+                                                if ($result2 < 0) {
+                                                    // Creation evaluation KO
+                                                    if (!empty($riskAssessment->errors)) {
+                                                        $actionError[] = join('<br/>', $riskAssessment->errors);
+                                                    } else {
+                                                        $actionError[] = $riskAssessment->error;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (array_key_exists('tasks', $digiriskExportRisk)) {
+                                            foreach ($digiriskExportRisk['tasks'] as $digiriskExportTask) {
+                                                $task->ref = $refTaskMod->getNextValue('', $task);
+                                                $task->date_start = $digiriskExportTask['date_start'];
+                                                $task->date_end = $digiriskExportTask['date_end'];
+                                                $task->label = $digiriskExportTask['label'];
+                                                $task->description = $digiriskExportTask['description'];
+                                                $task->duration_effective = $digiriskExportTask['duration_effective'];
+                                                $task->planned_workload = $digiriskExportTask['planned_workload'];
+                                                $task->progress = $digiriskExportTask['progress'];
+                                                $task->priority = $digiriskExportTask['priority'];
+                                                $task->budget_amount = $digiriskExportTask['budget_amount'];
+                                                //	$task->fk_statut                = $digiriskExportTask['fk_statut'];
+                                                $task->note_public = $digiriskExportTask['note_public'];
+                                                $task->note_private = $digiriskExportTask['note_private'];
+                                                $task->fk_project = $conf->global->DIGIRISKDOLIBARR_DU_PROJECT;
+                                                $task->array_options['fk_risk'] = $risk->id;
 
-											$result3 = $task->create($user, true);
+                                                $result3 = $task->create($user, true);
 
-											if ($result3 < 0) {
-												// Creation task KO
-												if ( ! empty($task->errors)) setEventMessages('', $task->errors, 'errors');
-												else setEventMessages($task->error, array(), 'errors');
-											}
-										}
-									}
-								} else {
-									// Creation risk KO
-									if ( ! empty($risk->errors)) setEventMessages('', $risk->errors, 'errors');
-									else setEventMessages($risk->error, array(), 'errors');
-								}
-							}
-						}
-					}
+                                                if ($result3 < 0) {
+                                                    // Creation task KO
+                                                    if (!empty($task->errors)) {
+                                                        $actionError[] = join('<br/>', $task->errors);
+                                                    } else {
+                                                        $actionError[] = $task->error;
+                                                    }
 
-					//RiskSign
-					if (array_key_exists('risksigns', $digiriskelementsingle)) {
-						foreach ($digiriskelementsingle['risksigns'] as $digiriskExportRiskSign) {
-							$risksign->ref         = $refRiskSignMod->getNextValue($risksign);
-							$risksign->status      = $digiriskExportRiskSign['status'];
-							$risksign->category    = $digiriskExportRiskSign['category'];
-							$risksign->description = $digiriskExportRiskSign['description'];
-							$risksign->fk_element  = $digiriskelementid;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // Creation risk KO
+                                        if (!empty($risk->errors)) {
+                                            $actionError[] = join('<br/>', $risk->errors);
+                                        } else {
+                                            $actionError[] = $risk->error;
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
-							if (!$error) {
-								$result = $risksign->create($user, true);
-								if ($result < 0) {
-									// Creation risksign KO
-									if (!empty($risksign->errors)) setEventMessages(null, $risksign->errors, 'errors');
-									else setEventMessages($risksign->error, null, 'errors');
-								}
-							}
-						}
-					}
-				}
-			}
+                        //RiskSign
+                        if (array_key_exists('risksigns', $digiriskelementsingle)) {
+                            foreach ($digiriskelementsingle['risksigns'] as $digiriskExportRiskSign) {
+                                $risksign->ref = $refRiskSignMod->getNextValue($risksign);
+                                $risksign->status = $digiriskExportRiskSign['status'];
+                                $risksign->category = $digiriskExportRiskSign['category'];
+                                $risksign->description = $digiriskExportRiskSign['description'];
+                                $risksign->fk_element = $digiriskelementid;
+
+                                if (!$error) {
+                                    $result = $risksign->create($user, true);
+                                    if ($result < 0) {
+                                        // Creation risksign KO
+                                        if (!empty($risksign->errors)) {
+                                            $actionError[] = join('<br/>', $risksign->errors);
+                                        } else {
+                                            $actionError[] = $risksign->error;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                $actionError[] = $langs->transnoentities('ErrorJsonBadFormatted');
+            }
 		}
 
 		$fileImportGlobals = dol_dir_list($filedir, "files", 0, '', '', '', '', 1);
@@ -786,20 +803,166 @@ if (GETPOST('dataMigrationImportGlobalDolibarr', 'alpha') && ! empty($conf->glob
 				unlink($fileImportGlobal['fullname']);
 			}
 		}
-	}
+        if (empty($actionError)) {
+            $actionSuccess = $langs->transnoentities('SuccessImport');
+        }
+	} else {
+        $actionError[] = $langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("File"));
+    }
+}
+
+if ($action == 'repair_category') {
+    // @TODO move into saturne when we will repair every fields of every objects
+    if (is_array($_POST) && !empty($_POST)) {
+        $errors = [];
+        foreach($_POST as $key => $value) {
+            if (strstr($key, 'search_') && dol_strlen($value) > 0 && $value >= 0 && $value <= count($dangerCategories)) {
+                $riskId = trim($key, 'search_');
+                $risk->fetch($riskId);
+                $result = $risk->setValueFrom('category', $value);
+
+                if ($result <= 0) {
+                    $errors[] = $risk->errors;
+                }
+            }
+        }
+    }
+
+    if (!empty($errors)) {
+        setEventMessages($risk->error, $errors, 'errors');
+    } else {
+        setEventMessages($langs->trans('RiskSuccessfullyRepaired'), []);
+    }
+    $action = '';
+}
+
+if ($action == 'repair_digirisk_element') {
+    $digiriskElementExistParentDigiriskElements = $digiriskElement->checkNotExistsDigiriskElementForParentDigiriskElement();
+
+    $ObjectToDeletes = [];
+    if (is_array($digiriskElementExistParentDigiriskElements)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $digiriskElementExistParentDigiriskElements);
+    }
+
+    foreach ($ObjectToDeletes as $object) {
+        $result = $object->delete($user, '', false);
+        if ($result <= 0) {
+            $errors[] = $object->errors;
+        }
+    }
+
+    if (!empty($errors)) {
+        setEventMessages('', $errors, 'errors');
+    } else {
+        setEventMessages($langs->trans('DigiriskElementSuccessfullyRepaired'), []);
+    }
+
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+if ($action == 'repair_risk') {
+    $riskFkElements             = $risk->fetchAll('', '', 0, 0, ['customsql' => 't.fk_element <= 0']);
+    $riskAssessmentFkElements   = saturne_fetch_all_object_type('RiskAssessment', '', '', 0, 0, ['customsql' =>  'r.fk_element <= 0'], 'AND', false, true, false, ' LEFT JOIN ' . MAIN_DB_PREFIX . $risk->table_element . ' as r ON r.rowid = t.fk_risk');
+    $riskStatus                 = $risk->fetchAll('', '', 0, 0, ['customsql' => 't.status < 0']);
+    $riskAssessmentStatus       = saturne_fetch_all_object_type('RiskAssessment', '', '', 0, 0, ['customsql' =>  'r.status <= 0'], 'AND', false, true, false, ' LEFT JOIN ' . MAIN_DB_PREFIX . $risk->table_element . ' as r ON r.rowid = t.fk_risk');
+    $riskExistFkElements        = $risk->checkNotExistsDigiriskElementForRisk();
+    $riskExistRiskAssessment    = $risk->checkNotExistsRiskAssessmentForRisk();
+    $riskAssessmentExistFkRisks = $riskAssessment->checkNotExistsRiskForRiskAssessment();
+
+    $ObjectToDeletes = [];
+    if (is_array($riskFkElements)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskFkElements);
+    }
+    if (is_array($riskFkElements)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskFkElements);
+    }
+    if (is_array($riskStatus)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskStatus);
+    }
+    if (is_array($riskAssessmentStatus)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskAssessmentStatus);
+    }
+    if (is_array($riskExistFkElements)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskExistFkElements);
+    }
+    if (is_array($riskExistRiskAssessment)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskExistRiskAssessment);
+    }
+    if (is_array($riskAssessmentExistFkRisks)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskAssessmentExistFkRisks);
+    }
+
+    foreach ($ObjectToDeletes as $object) {
+        $result = $object->delete($user, '', false);
+        if ($result <= 0) {
+            $errors[] = $object->errors;
+        }
+    }
+
+    if (!empty($errors)) {
+        setEventMessages('', $errors, 'errors');
+    } else {
+        setEventMessages($langs->trans('RiskSuccessfullyRepaired'), []);
+    }
+
+    header("Location: " . $_SERVER["PHP_SELF"]);
+    exit;
+}
+
+if ($action == 'repair_risk_assessment') {
+    $riskAssessmentStatus       = $riskAssessment->fetchAll('', '', 0, 0, ['customsql' => 't.status < 0 || t.status IS NULL']);
+    $riskAssessmentCotations    = $riskAssessment->fetchAll('', '', 0, 0, ['customsql' => 't.cotation IS NULL']);
+    $risks                      = saturne_fetch_all_object_type('Risk', '', '', 0, 0, ['customsql' =>  'ra.cotation IS NULL'], 'AND', false, true, false, ' LEFT JOIN ' . MAIN_DB_PREFIX . $riskAssessment->table_element . ' as ra ON ra.fk_risk = t.rowid');
+    $riskAssessmentExistFkRisks = $riskAssessment->checkNotExistsRiskForRiskAssessment();
+
+    $ObjectToDeletes = [];
+    if (is_array($riskAssessmentStatus)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskAssessmentStatus);
+    }
+    if (is_array($riskAssessmentCotations)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskAssessmentCotations);
+    }
+    if (is_array($risks)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $risks);
+    }
+    if (is_array($riskAssessmentExistFkRisks)) {
+        $ObjectToDeletes = array_merge($ObjectToDeletes, $riskAssessmentExistFkRisks);
+    }
+
+    foreach ($ObjectToDeletes as $object) {
+        $result = $object->delete($user, '', false);
+        if ($result <= 0) {
+            $errors[] = $object->errors;
+        }
+    }
+
+    if (!empty($errors)) {
+        setEventMessages('', $errors, 'errors');
+    } else {
+        setEventMessages($langs->trans('RiskAssessmentSuccessfullyRepaired'), []);
+    }
+
+    header("Location: " . $_SERVER["PHP_SELF"]);
+    exit;
 }
 
 /*
  * View
  */
 
-$help_url = 'FR:Module_Digirisk#Import.2Fexport_de_donn.C3.A9es';
-$morejs   = array("/digiriskdolibarr/js/digiriskdolibarr.js");
-$morecss  = array("/digiriskdolibarr/css/digiriskdolibarr.css");
+$title   = $langs->trans("Tools");
+$helpUrl = 'FR:Module_Digirisk#Import.2Fexport_de_donn.C3.A9es';
 
-llxHeader("", $langs->trans("Tools"), $help_url, '', '', '', $morejs, $morecss);
+saturne_header(0,"", $title, $helpUrl);
 
-print load_fiche_titre($langs->trans("Tools"), '', 'wrench');
+print load_fiche_titre($title, '', 'wrench');
+
+if (!empty($actionError)) {
+    echo '<input name="error" value="' . join('<br>', $actionError) . '" data-title="' . $langs->transnoentities('Error') . '" type="hidden">';
+} elseif (isset($actionSuccess)) {
+    echo '<input name="success" value="' . $actionSuccess . '" data-title="' . $langs->transnoentities('Success') . '" type="hidden">';
+}
 
 if ($user->rights->digiriskdolibarr->adminpage->read) {
 	if ($conf->global->DIGIRISKDOLIBARR_TOOLS_TREE_ALREADY_IMPORTED == 1) : ?>
@@ -902,6 +1065,8 @@ if ($user->rights->digiriskdolibarr->adminpage->read) {
 	print '</table>';
 	print '</form>';
 
+    print saturne_show_notice('', '', '', 'migration-dolibarr-notice');
+
 	print load_fiche_titre($langs->trans("DataMigrationDolibarrToDolibarr"), '', '');
 
 	print '<form class="data-migration-export-global-from" name="dataMigrationExportGlobal" id="dataMigrationExportGlobal" action="' . $_SERVER["PHP_SELF"] . '" method="POST">';
@@ -930,7 +1095,7 @@ if ($user->rights->digiriskdolibarr->adminpage->read) {
 
 	print '<form class="data-migration-from" name="DataMigration" id="DataMigration" action="' . $_SERVER["PHP_SELF"] . '" enctype="multipart/form-data" method="POST">';
 	print '<input type="hidden" name="token" value="' . newToken() . '">';
-	print '<input type="hidden" name="action" value="">';
+	print '<input type="hidden" name="action" value="import_global_dolibarr">';
 
 	// Import data from Dolibarr
 	print '<tr class="oddeven"><td>';
@@ -940,12 +1105,196 @@ if ($user->rights->digiriskdolibarr->adminpage->read) {
 	print '</td>';
 
 	print '<td class="center data-migration-import-global-dolibarr">';
-	print '<input class="flat" type="file" name="dataMigrationImportGlobalDolibarrfile[]" id="data-migration-import-global-dolibarr" />';
-	print '<input type="submit" class="button reposition data-migration-submit" name="dataMigrationImportGlobalDolibarr" value="' . $langs->trans("Upload") . '">';
+	print '<input type="file" name="file[]" />';
+	print '<input type="submit" class="button reposition" name="dataMigrationImportGlobalDolibarr" value="' . $langs->trans("Upload") . '">';
 	print '</td>';
 	print '</tr>';
 	print '</table>';
-	print '</form>';
+    print '</form>';
+
+    print load_fiche_titre($langs->trans('CorruptedCategoryOnRiskList'), '', '');
+
+    print '<form class="repair-category" name="repairCategory" id="repairCategory" action="' . $_SERVER['PHP_SELF'] . '" method="POST">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="hidden" name="action" value="repair_category">';
+
+    print '<table class="noborder centpercent">';
+    print '<tr class="liste_titre">';
+    print '<td class="center">' . $langs->trans('RiskCategory') . '</td>';
+    print '<td>' . $langs->trans('Risk') . '</td>';
+    print '<td>' . $langs->trans('Type') . '</td>';
+    print '<td>' . $langs->trans('Description') . '</td>';
+    print '<td>' . $langs->trans('DigiriskElement') . '</td>';
+    print '</tr>';
+
+    $corruptedRisks = saturne_fetch_all_object_type('Risk', '', '', 0, 0, ['customsql' => 't.category NOT BETWEEN 0 AND ' . count($dangerCategories)]);
+
+    if (is_array($corruptedRisks) && !empty($corruptedRisks)) {
+        foreach ($corruptedRisks as $key => $risk) {
+            $digiriskElement->fetch($risk->fk_element);
+            print '<tr class="oddeven">';
+            print '<td class="center">'
+            ?>
+                <div class="wpeo-dropdown dropdown-large dropdown-grid category-danger padding" style="position: inherit">
+                    <input class="input-hidden-danger" type="hidden" name="<?php echo 'search_' . $key ?>" />
+                        <div class="dropdown-toggle dropdown-add-button button-cotation">
+                            <span class="wpeo-button button-square-50 button-grey"><i class="fas fa-exclamation-triangle button-icon"></i></span>
+                            <img class="danger-category-pic wpeo-tooltip-event hidden" src="" aria-label="" />
+                        </div>
+                    <ul class="saturne-dropdown-content wpeo-gridlayout grid-5 grid-gap-0">
+                        <?php
+                        if ($risk->type == 'risk') {
+                            if (!empty($dangerCategories)) :
+                                foreach ($dangerCategories as $dangerCategory) : ?>
+                                    <li class="item dropdown-item wpeo-tooltip-event classfortooltip" data-is-preset="<?php echo ''; ?>" data-id="<?php echo $dangerCategory['position'] ?>" aria-label="<?php echo $dangerCategory['name'] ?>">
+                                        <img src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $dangerCategory['thumbnail_name'] . '.png'?>" class="attachment-thumbail size-thumbnail photo photowithmargin" alt="" loading="lazy" width="48" height="48">
+                                    </li>
+                                <?php endforeach;
+                            endif;
+                        } else {
+                            if (!empty($environmentalCategories)) :
+                                foreach ($environmentalCategories as $environmentalCategory) : ?>
+                                    <li class="item dropdown-item wpeo-tooltip-event classfortooltip" data-is-preset="<?php echo ''; ?>" data-id="<?php echo $environmentalCategory['position'] ?>" aria-label="<?php echo $environmentalCategory['name'] ?>">
+                                        <img src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $environmentalCategory['thumbnail_name'] . '.png'?>" class="attachment-thumbail size-thumbnail photo photowithmargin" alt="" loading="lazy" width="48" height="48">
+                                    </li>
+                                <?php endforeach;
+                            endif;
+                        }?>
+                    </ul>
+                </div>
+            <?php
+            print '</td>';
+            print '<td>' . $risk->getNomUrl(1, 'nolink') . '</td>';
+            print '<td>' . $langs->trans(ucfirst($risk->type)) . '</td>';
+            print '<td>' . $risk->description . '</td>';
+            print '<td>' . $digiriskElement->getNomUrl(1, '', 0, '', -1, 1) . '</td>';
+            print '</tr>';
+        }
+        $button = '<input type="submit" class="wpeo-button button reposition" value="' . $langs->trans('RepairRisks') . '">';
+    } else {
+        print '<tr class="oddeven"><td colspan="5" class="opacitymedium">' . $langs->trans('NoRiskToRepair') . '</td></tr>';
+        $button = '<span class="butActionRefused">' . $langs->trans('RepairRisks') . '</span>';
+    }
+
+    print '</table>';
+    print '<div class="tabsAction">';
+    print $button;
+    print '</div>';
+    print '</form>';
+
+    print load_fiche_titre($langs->trans('CleanObject'), '', '');
+
+    print '<table class="noborder centpercent">';
+    print '<tr class="liste_titre">';
+    print '<td>' . $langs->trans('Name') . '</td>';
+    print '<td>' . $langs->trans('Description') . '</td>';
+    print '<td class="center">' . $langs->trans('Action') . '</td>';
+    print '</tr>';
+
+    print '<form name="repair" id="repair" action="' . $_SERVER['PHP_SELF'] . '" method="POST">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="hidden" name="action" value="repair_digirisk_element">';
+
+    print '<tr class="oddeven"><td>';
+    print $langs->trans('CleanDigiriskElement');
+    print '</td><td>';
+    print '<div class="wpeo-notice notice-warning">';
+    print '<div class="notice-content">';
+
+    $nbDigiriskElements = 0;
+    $digiriskElements   = $digiriskElement->checkNotExistsDigiriskElementForParentDigiriskElement();
+    if (is_array($digiriskElements) && !empty($digiriskElements)) {
+        $nbDigiriskElements = count($digiriskElements);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanDigiriskElementExistParentDigiriskElement', $nbDigiriskElements) . '</strong></div>';
+    }
+    if ($nbDigiriskElements == 0) {
+        print '<div class="notice-subtitle"><strong>' . $langs->trans('NoDigiriskElementToClean') . '</strong></div>';
+    }
+
+    print '</div></div>';
+    print '</td><td class="center">';
+    print '<input type="submit" class="button reposition wpeo-button button-load ' . ($nbDigiriskElements == 0 ? 'button-disable' : '') . '" name="CleanDigiriskElement" value="' . $langs->trans('Clean') . '">';
+    print '</td></tr>';
+    print '</form>';
+
+    print '<form name="repair" id="repair" action="' . $_SERVER['PHP_SELF'] . '" method="POST">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="hidden" name="action" value="repair_risk">';
+
+    print '<tr class="oddeven"><td>';
+    print $langs->trans('CleanRisk');
+    print '</td><td>';
+    print '<div class="wpeo-notice notice-warning">';
+    print '<div class="notice-content">';
+
+    $nbRisks = 0;
+    $risks   = $risk->fetchAll('', '', 0, 0, ['customsql' => 't.fk_element <= 0']);
+    if (is_array($risks) && !empty($risks)) {
+        $nbRisks = count($risks);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskFkElement', $nbRisks) . '</strong></div>';
+    }
+    $risks = $risk->fetchAll('', '', 0, 0, ['customsql' => 't.status < 0']);
+    if (is_array($risks) && !empty($risks)) {
+        $nbRisks = count($risks);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskStatus', $nbRisks) . '</strong></div>';
+    }
+    $risks = $risk->checkNotExistsDigiriskElementForRisk();
+    if (is_array($risks) && !empty($risks)) {
+        $nbRisks = count($risks);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskExistFkElement', $nbRisks) . '</strong></div>';
+    }
+    $risks = $risk->checkNotExistsRiskAssessmentForRisk();
+    if (is_array($risks) && !empty($risks)) {
+        $nbRisks = count($risks);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskExistRiskAssessment', $nbRisks) . '</strong></div>';
+    }
+    if ($nbRisks == 0) {
+        print '<div class="notice-subtitle"><strong>' . $langs->trans('NoRiskToClean') . '</strong></div>';
+    }
+
+    print '</div></div>';
+    print '</td><td class="center">';
+    print '<input type="submit" class="button reposition wpeo-button button-load ' . ($nbRisks == 0 ? 'button-disable' : '') . '" name="CleanRisk" value="' . $langs->trans('Clean') . '">';
+    print '</td></tr>';
+    print '</form>';
+
+    print '<form name="repair" id="repair" action="' . $_SERVER['PHP_SELF'] . '" method="POST">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="hidden" name="action" value="repair_risk_assessment">';
+
+    print '<tr class="oddeven"><td>';
+    print $langs->trans('CleanRiskAssessment');
+    print '</td><td>';
+    print '<div class="wpeo-notice notice-warning">';
+    print '<div class="notice-content">';
+
+    $nbRiskAssessments = 0;
+    $riskAssessments   = $riskAssessment->fetchAll('', '', 0, 0, ['customsql' => 't.status < 0 || t.status IS NULL']);
+    if (is_array($riskAssessments) && !empty($riskAssessments)) {
+        $nbRiskAssessments = count($riskAssessments);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskAssessmentStatus', $nbRiskAssessments) . '</strong></div>';
+    }
+    $riskAssessments = $riskAssessment->fetchAll('', '', 0, 0, ['customsql' => 't.cotation IS NULL']);;
+    if (is_array($riskAssessments) && !empty($riskAssessments)) {
+        $nbRiskAssessments = count($riskAssessments);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskAssessmentCotation', $nbRiskAssessments) . '</strong></div>';
+    }
+    $riskAssessments = $riskAssessment->checkNotExistsRiskForRiskAssessment();
+    if (is_array($riskAssessments) && !empty($riskAssessments)) {
+        $nbRiskAssessments = count($riskAssessments);
+        print '<div class="notice-subtitle"><strong>' . $langs->transnoentities('CleanRiskAssessmentExistFkRisk', $nbRiskAssessments) . '</strong></div>';
+    }
+    if ($nbRiskAssessments == 0) {
+        print '<div class="notice-subtitle"><strong>' . $langs->trans('NoRiskAssessmentToClean') . '</strong></div>';
+    }
+
+    print '</div></div>';
+    print '</td><td class="center">';
+    print '<input type="submit" class="button reposition wpeo-button button-load ' . ($nbRiskAssessments == 0 ? 'button-disable' : '') . '" name="RepairRiskAssessment" value="' . $langs->trans('Clean') . '">';
+    print '</td></tr>';
+
+    print '</form>';
+    print '</table>';
 }
 
 // End of page

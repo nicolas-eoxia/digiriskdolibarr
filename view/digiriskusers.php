@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,19 +21,14 @@
  *		\brief      Page to view Users
  */
 
-// Load Dolibarr environment
-$res = 0;
-// Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)
-if ( ! $res && ! empty($_SERVER["CONTEXT_DOCUMENT_ROOT"])) $res = @include $_SERVER["CONTEXT_DOCUMENT_ROOT"] . "/main.inc.php";
-// Try main.inc.php into web root detected using web root calculated from SCRIPT_FILENAME
-$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME']; $tmp2 = realpath(__FILE__); $i = strlen($tmp) - 1; $j = strlen($tmp2) - 1;
-while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) { $i--; $j--; }
-if ( ! $res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1)) . "/main.inc.php")) $res          = @include substr($tmp, 0, ($i + 1)) . "/main.inc.php";
-if ( ! $res && $i > 0 && file_exists(dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php")) $res = @include dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php";
-// Try main.inc.php using relative path
-if ( ! $res && file_exists("../../main.inc.php")) $res    = @include "../../main.inc.php";
-if ( ! $res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
-if ( ! $res) die("Include of main fails");
+// Load DigiriskDolibarr environment
+if (file_exists('../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../digiriskdolibarr.main.inc.php';
+} elseif (file_exists('../../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../../digiriskdolibarr.main.inc.php';
+} else {
+	die('Include of digiriskdolibarr main fails');
+}
 
 // Libraries
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
@@ -42,13 +37,12 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/html.formother.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 
 require_once __DIR__ . '/../lib/digiriskdolibarr_function.lib.php';
-require_once __DIR__ . '/../core/tpl/digirisk_security_checks.php';
 
 // Global variables definitions
 global $conf, $db, $hookmanager, $langs, $user;
 
 // Load translation files required by page
-$langs->loadLangs(array('users', 'companies', 'hrm'));
+saturne_load_langs(['users', 'companies', 'hrm']);
 
 // Get parameters
 $action      = GETPOST('action', 'aZ09');
@@ -81,18 +75,11 @@ $usergroupstatic = new UserGroup($db);
 $hookmanager->initHooks(array('digiriskuserlist', 'globalcard')); // Note that conf->hooks_modules contains array
 
 // Define value to know what current user can do on users
-$canadduser      = ( ! empty($user->admin) || $user->rights->user->user->creer);
-$permissiontoadd = $user->rights->digiriskdolibarr->adminpage->read;
+$permissiontoadd  = ( ! empty($user->admin) || $user->rights->user->user->creer);
+$permissiontoread = $user->rights->digiriskdolibarr->adminpage->read;
 
-if ( ! $user->rights->user->user->lire && ! $user->admin) {
-	accessforbidden();
-}
-
-// Security check (for external users)
-$socid = 0;
-if ($user->socid > 0) {
-	$socid = $user->socid;
-}
+// Security check - Protection if external user
+saturne_check_access($permissiontoadd);
 
 // fetch optionals attributes and labels
 $extrafields->fetch_name_optionals_label($object->table_element);
@@ -173,7 +160,7 @@ if ($mode == 'employee' && ! GETPOSTISSET('search_employee')) $search_employee =
  */
 
 if (GETPOST('cancel', 'alpha')) { $action = 'list'; $massaction = ''; }
-if ( ! GETPOST('confirmmassaction', 'alpha') && $massaction != 'presend' && $massaction != 'confirm_presend' && $massaction != 'confirm_createbills') { $massaction = ''; }
+if ( isset($massaction) && !GETPOST('confirmmassaction', 'alpha') && $massaction != 'presend' && $massaction != 'confirm_presend' && $massaction != 'confirm_createbills') { $massaction = ''; }
 
 $parameters = array();
 $reshook    = $hookmanager->executeHooks('doActions', $parameters); // Note that $action and $object may have been modified by some hooks
@@ -208,7 +195,7 @@ if (empty($reshook)) {
 	}
 }
 // Action Add user
-if ($action == 'add' && $canadduser && $permissiontoadd) {
+if ($action == 'add' && $permissiontoadd) {
 	$error = 0;
 
 	if ( ! $_POST["lastname"]) {
@@ -258,7 +245,7 @@ if ($action == 'add' && $canadduser && $permissiontoadd) {
 		}
 
 		// Set entity property
-		$object->entity = $conf->entity;
+		$object->entity = getDolGlobalInt('MULTICOMPANY_TRANSVERSE_MODE') ? 1 : $conf->entity;
 
 		$db->begin();
 
@@ -267,7 +254,8 @@ if ($action == 'add' && $canadduser && $permissiontoadd) {
 			if (GETPOST('password')) {
 				$newpassword = $object->setPassword($user, GETPOST('password'));
 			}
-			$object->SetInGroup($group, $conf->entity);
+
+			$object->SetInGroup(GETPOSTINT('groupid'), $conf->entity);
 
 			if ($newpassword < 0) {
 				// Echec
@@ -313,7 +301,6 @@ $formother = new FormOther($db);
 
 $user2 = new User($db);
 
-
 $sql  = "SELECT DISTINCT u.rowid, u.lastname, u.firstname, u.admin, u.fk_soc, u.login, u.email, u.job, u.api_key, u.accountancy_code, u.gender, u.employee, u.photo,";
 $sql .= " u.datelastlogin, u.datepreviouslogin,";
 $sql .= " u.ldap_sid, u.statut, u.entity,";
@@ -343,7 +330,7 @@ if ($reshook > 0) {
 } else {
 	$sql .= " WHERE u.entity IN (".getEntity('user').")";
 }
-if ($socid > 0) $sql .= " AND u.fk_soc = " . $socid;
+if (isset($socid) && $socid > 0) $sql .= " AND u.fk_soc = " . $socid;
 //if ($search_user != '')       $sql.=natural_search(array('u.login', 'u.lastname', 'u.firstname'), $search_user);
 if ($search_supervisor > 0)   $sql                           .= " AND u.fk_user IN (" . $db->escape($search_supervisor) . ")";
 if ($search_thirdparty != '') $sql                           .= natural_search(array('s.nom'), $search_thirdparty);
@@ -366,14 +353,12 @@ if ($search_categ > 0)   $sql                         .= " AND cu.fk_categorie =
 if ($search_categ == -2) $sql                         .= " AND cu.fk_categorie IS NULL";
 if ($search_fk_usergroup > 0)   $sql                  .= " AND g.fk_usergroup IN (" . $db->escape($search_fk_usergroup) . ")";
 
-$user->fetchAll('','','','',['login' => 'USERAPI']);
+$user->fetchAll('','','','', "(login:=:'USERAPI')");
 
 if (is_array($user->users) && !empty($user->users)) {
 	$userIds = implode(',', array_keys($user->users));
 	$sql .= ' AND u.rowid NOT IN (' . $userIds . ')';
 }
-
-$sql .= ' GROUP BY u.rowid';
 
 // Add where from extra fields
 include DOL_DOCUMENT_ROOT . '/core/tpl/extrafields_list_search_sql.tpl.php';
@@ -575,7 +560,6 @@ print '</td>';
 
 print "</tr>\n";
 
-
 print '<tr class="liste_titre">';
 if ( ! empty($arrayfields['u.login']['checked']))          print_liste_field_titre("Login", $_SERVER['PHP_SELF'], "u.login", $param, "", "", $sortfield, $sortorder);
 if ( ! empty($arrayfields['u.lastname']['checked']))       print_liste_field_titre("Lastname", $_SERVER['PHP_SELF'], "u.lastname", $param, "", "", $sortfield, $sortorder);
@@ -604,16 +588,14 @@ if ( ! empty($arrayfields['u.statut']['checked'])) print_liste_field_titre("Stat
 print_liste_field_titre($selectedfields, $_SERVER["PHP_SELF"], "", '', '', '', $sortfield, $sortorder, 'center maxwidthsearch ');
 print "</tr>\n";
 
-
-
 $i          = 0;
-$totalarray = array();
+$totalarray = ['nbfield' => 0];
 while ($i < min($num, $limit)) {
 	$obj = $db->fetch_object($result);
 
 	$userstatic->id        = $obj->rowid;
 	$userstatic->admin     = $obj->admin;
-	$userstatic->ref       = $obj->label;
+	$userstatic->ref       = $obj->label ?? '';
 	$userstatic->login     = $obj->login;
 	$userstatic->statut    = $obj->statut;
 	$userstatic->email     = $obj->email;
@@ -804,7 +786,7 @@ print "</table>";
 
 print "</form>\n";
 
-if ($canadduser && (empty($conf->global->MULTICOMPANY_TRANSVERSE_MODE) || $conf->entity == 1)) {
+if ($permissiontoadd) {
 	print '<form action="' . $_SERVER['PHP_SELF'] . '" method="POST" name="createuser">';
 	print '<input type="hidden" name="token" value="' . newToken() . '">';
 	print '<input type="hidden" name="action" value="add">';
@@ -837,6 +819,9 @@ if ($canadduser && (empty($conf->global->MULTICOMPANY_TRANSVERSE_MODE) || $conf-
 								<div class="table-cell table-150">
 									<input type="text" id="job" placeholder="<?php echo $langs->trans('PostOrFunction'); ?>" name="job" value="<?php echo dol_escape_htmltag(GETPOST('job')); ?>" />
 								</div>
+								<div class="table-cell table-300">
+									<?php echo $form->select_dolgroups($group, 'groupid', 1, '', 0, '', array(), (string) $conf->entity, false, 'minwidth100imp widthcentpercentminusxx groupselectcontact'); ?>
+								</div>
 								<div class="table-cell">
 									<input type="submit" id="createuseraction" name="createuseraction" style="display : none">
 									<label for="createuseraction">
@@ -856,13 +841,7 @@ if ($canadduser && (empty($conf->global->MULTICOMPANY_TRANSVERSE_MODE) || $conf-
 	$action = '';
 	print '</form>';
 	print '</table></tr>';
-} else { ?>
-	<div class="wpeo-notice notice-info">
-		<div class="notice-content">
-			<div class="notice-subtitle"><?php echo $langs->trans("MulticompanyTransverseModeEnabled"); ?></div>
-		</div>
-	</div>
-<?php }
+}
 
 print '</div>';
 

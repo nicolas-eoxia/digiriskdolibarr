@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,510 +22,122 @@
  */
 
 /**
- *  Show photos of an object (nbmax maximum), into several columns
+ * Process the GP/UT organization actions (reorder, rename, quick create, delete).
+ * Shared by the left navigation panel (digirisk_header, rendered on every digirisk page)
+ * and the standalone organization page. Must run before any HTML output: AJAX actions
+ * answer JSON and form actions redirect, both ending with exit().
  *
- *  @param		string	$modulepart		'product', 'ticket', ...
- *  @param      string	$sdir        	Directory to scan (full absolute path)
- *  @param      string	$size        	0=original size, 1='small' use thumbnail if possible
- *  @param      int		$nbmax       	Nombre maximum de photos (0=pas de max)
- *  @param      int		$nbbyrow     	Number of image per line or -1 to use div. Used only if size=1.
- * 	@param		int		$showfilename	1=Show filename
- * 	@param		int		$showaction		1=Show icon with action links (resize, delete)
- * 	@param		int		$maxHeight		Max height of original image when size='small' (so we can use original even if small requested). If 0, always use 'small' thumb image.
- * 	@param		int		$maxWidth		Max width of original image when size='small'
- *  @param      int     $nolink         Do not add a href link to view enlarged imaged into a new tab
- *  @param      int     $notitle        Do not add title tag on image
- *  @param		int		$usesharelink	Use the public shared link of image (if not available, the 'nophoto' image will be shown instead)
- *  @param		string  $subdir			Subdirectory to scan
- *  @param		object	$object			Object element
- *  @return     string					Html code to show photo. Number of photos shown is saved in this->nbphoto
+ * @return void
  */
-function digirisk_show_photos($modulepart, $sdir, $size = '', $nbmax = 0, $nbbyrow = 5, $showfilename = 0, $showaction = 0, $maxHeight = 120, $maxWidth = 160, $nolink = 0, $notitle = 0, $usesharelink = 0, $subdir = "", $object = null)
+function digirisk_organization_actions()
 {
-	global $conf, $langs;
-
-	include_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
-	include_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
-
-	$sortfield = 'position_name';
-	$sortorder = 'desc';
-
-	if (is_object($object)) {
-		$dir  = $sdir . '/' . $object->ref . '/';
-		$pdir = $subdir . '/' . $object->ref . '/';
-	} else {
-		$dir  = $sdir . '/';
-		$pdir = $subdir . '/';
-	}
-
-	// Defined relative dir to DOL_DATA_ROOT
-	if ($dir) {
-		$relativedir = preg_replace('/^' . preg_quote(DOL_DATA_ROOT, '/') . '/', '', $dir);
-		$relativedir = preg_replace('/^[\\/]/', '', $relativedir);
-		preg_replace('/[\\/]$/', '', $relativedir);
-	}
-
-	$dirthumb  = $dir . 'thumbs/';
-	$pdirthumb = $pdir . 'thumbs/';
-
-	$return  = '<!-- Photo -->' . "\n";
-	$nbphoto = 0;
-
-	$filearray = dol_dir_list($dir, "files", 0, '', '(\.meta|_preview.*\.png)$', $sortfield, SORT_DESC, 1);
-	if (count($filearray)) {
-		if ($sortfield && $sortorder) {
-			$filearray = dol_sort_array($filearray, $sortfield, $sortorder);
-		}
-
-		foreach ($filearray as $key => $val) {
-			$file  = $val['name'];
-
-			//if (! utf8_check($file)) $file=utf8_encode($file);	// To be sure file is stored in UTF8 in memory
-
-			//if (dol_is_file($dir.$file) && image_format_supported($file) >= 0)
-			if (image_format_supported($file) >= 0) {
-				$nbphoto++;
-				$photo        = $file;
-				$viewfilename = $file;
-
-				if ($size == 'small') {   // Format vignette
-					// Find name of thumb file
-					$photo_vignette = basename(getImageFileNameForSize($dir . $file, '_small'));
-
-					if ( ! dol_is_file($dirthumb . $photo_vignette)) $photo_vignette = '';
-
-					// Get filesize of original file
-					$imgarray = dol_getImageSize($dir . $photo);
-
-					if ($nbbyrow > 0) {
-						if ($nbphoto == 1) $return .= '<table class="valigntop center centpercent" style="border: 0; padding: 2px; border-spacing: 2px; border-collapse: separate;">';
-
-						if ($nbphoto % $nbbyrow == 1) $return .= '<tr class="center valignmiddle" style="border: 1px">';
-						$return                               .= '<td style="width: ' . ceil(100 / $nbbyrow) . '%" class="photo">';
-					} elseif ($nbbyrow < 0) $return .= '<div class="inline-block">';
-
-					$return .= "\n";
-
-					$relativefile = preg_replace('/^\//', '', $pdir . $photo);
-					if (empty($nolink)) {
-						$urladvanced               = getAdvancedPreviewUrl($modulepart, $relativefile, 0, 'entity=' . $conf->entity);
-						if ($urladvanced) $return .= '<a href="' . $urladvanced . '">';
-						else $return              .= '<a href="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $modulepart . '&entity=' . $conf->entity . '&file=' . urlencode($pdir . $photo) . '" class="aphoto" target="_blank">';
-					}
-
-					// Show image (width height=$maxHeight)
-					// Si fichier vignette disponible et image source trop grande, on utilise la vignette, sinon on utilise photo origine
-					$alt               = $langs->transnoentitiesnoconv('File') . ': ' . $relativefile;
-					$alt              .= ' - ' . $langs->transnoentitiesnoconv('Size') . ': ' . $imgarray['width'] . 'x' . $imgarray['height'];
-					if ($notitle) $alt = '';
-
-					if ($usesharelink) {
-						if ($val['share']) {
-							if (empty($maxHeight) || $photo_vignette && $imgarray['height'] > $maxHeight) {
-								$return .= '<!-- Show original file (thumb not yet available with shared links) -->';
-								$return .= '<img class="photo photowithmargin clicked-photo-preview" height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/viewimage.php?hashp=' . urlencode($val['share']) . '" title="' . dol_escape_htmltag($alt) . '">';
-							} else {
-								$return .= '<!-- Show original file -->';
-								$return .= '<img class="photo photowithmargin clicked-photo-preview" height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/viewimage.php?hashp=' . urlencode($val['share']) . '" title="' . dol_escape_htmltag($alt) . '">';
-							}
-						} else {
-							$return .= '<!-- Show nophoto file (because file is not shared) -->';
-							$return .= '<img class="photo photowithmargin" height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/public/theme/common/nophoto.png" title="' . dol_escape_htmltag($alt) . '">';
-						}
-					} elseif ($photo_vignette && $imgarray['height'] > $maxHeight) {
-						$return .= '<!-- Show thumb -->';
-						$return .= '<img class="photo clicked-photo-preview ' . (($file == $object->photo && $object->element == 'digiriskelement') ? 'favorite-photo' : '') . '"  height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $modulepart . '&entity=' . $conf->entity . '&file=' . urlencode($pdirthumb . $photo_vignette) . '" title="' . dol_escape_htmltag($alt) . '">';
-					} else {
-						$return .= '<!-- Show original file -->';
-						$return .= '<img class="photo photowithmargin clicked-photo-preview" height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $modulepart . '&entity=' . $conf->entity . '&file=' . urlencode($pdir . $photo) . '" title="' . dol_escape_htmltag($alt) . '">';
-					}
-					$return .= '<input type="hidden" class="filename" value="' . $photo . '">';
-
-					if (empty($nolink)) $return .= '</a>';
-					$return                     .= "\n";
-					if ($showfilename) $return  .= '<br>' . $viewfilename;
-					if ($showaction) {
-						$return .= '<br>';
-						// On propose la generation de la vignette si elle n'existe pas et si la taille est superieure aux limites
-						if ($photo_vignette && (image_format_supported($photo) > 0) && ($object->imgWidth > $maxWidth || $object->imgHeight > $maxHeight)) {
-							$return .= '<a href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&amp;action=addthumb&amp;file=' . urlencode($pdir . $viewfilename) . '">' . img_picto($langs->trans('GenerateThumb'), 'refresh') . '&nbsp;&nbsp;</a>';
-						}
-					}
-					$return .= "\n";
-
-					if ($nbbyrow > 0) {
-						$return                                 .= '</td>';
-						if (($nbphoto % $nbbyrow) == 0) $return .= '</tr>';
-					} elseif ($nbbyrow < 0) $return .= '</div>';
-				}
-
-				if (empty($size)) {     // Format origine
-					$return .= '<img class="photo photowithmargin" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $modulepart . '&entity=' . $conf->entity . '&file=' . urlencode($pdir . $photo) . '">';
-
-					if ($showfilename) $return .= '<br>' . $viewfilename;
-				}
-
-				// On continue ou on arrete de boucler ?
-				if ($nbmax && $nbphoto >= $nbmax) break;
-			}
-		}
-
-		if ($size == 'small') {
-			if ($nbbyrow > 0) {
-				// Ferme tableau
-				while ($nbphoto % $nbbyrow) {
-					$return .= '<td style="width: ' . ceil(100 / $nbbyrow) . '%">&nbsp;</td>';
-					$nbphoto++;
-				}
-
-				if ($nbphoto) $return .= '</table>';
-			}
-		}
-	} else {
-		$return .= '<img class="photo photowithmargin" height="' . $maxHeight . '" width="' . $maxWidth . '" src="' . DOL_URL_ROOT . '/public/theme/common/nophoto.png">';
-	}
-	if (is_object($object)) {
-		$object->nbphoto = $nbphoto;
-	}
-	return $return;
-}
-
-/**
- *      Return a string to show the box with list of available documents for object.
- *      This also set the property $this->numoffiles
- *
-* @param      string				$modulepart         Module the files are related to ('propal', 'facture', 'facture_fourn', 'mymodule', 'mymodule:nameofsubmodule', 'mymodule_temp', ...)
-* @param      string				$modulesubdir       Existing (so sanitized) sub-directory to scan (Example: '0/1/10', 'FA/DD/MM/YY/9999'). Use '' if file is not into subdir of module.
-* @param      string				$filedir            Directory to scan
-* @param      string				$urlsource          Url of origin page (for return)
-* @param      int|string[]        $genallowed         Generation is allowed (1/0 or array list of templates)
-* @param      int					$delallowed         Remove is allowed (1/0)
-* @param      string				$modelselected      Model to preselect by default
-* @param      int					$allowgenifempty	Allow generation even if list of template ($genallowed) is empty (show however a warning)
-* @param		int					$noform				Do not output html form tags
-* @param		string				$param				More param on http links
-* @param		string				$title				Title to show on top of form. Example: '' (Default to "Documents") or 'none'
-* @param		string				$buttonlabel		Label on submit button
-* @param		string				$morepicto			Add more HTML content into cell with picto
-* @param      Object              $object             Object when method is called from an object card.
-* @param		int					$hideifempty		Hide section of generated files if there is no file
-* @param      string              $removeaction       (optional) The action to remove a file
-* @param      bool                 $active             (optional) To show gen button disabled
-* @param      string              $tooltiptext       (optional) Tooltip text when gen button disabled
-* @return		string              					Output string with HTML array of documents (might be empty string)
-*/
-function digiriskshowdocuments($modulepart, $modulesubdir, $filedir, $urlsource, $genallowed, $delallowed = 0, $modelselected = '', $allowgenifempty = 1, $noform = 0, $param = '', $title = '', $buttonlabel = '', $morepicto = '', $object = null, $hideifempty = 0, $removeaction = 'remove_file', $active = true, $tooltiptext = 'PermissionDenied')
-{
-	global $db, $langs, $conf, $hookmanager, $form;
-
-	if ( ! is_object($form)) $form = new Form($db);
-
-	include_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
-
-	// Add entity in $param if not already exists
-	if ( ! preg_match('/entity\=[0-9]+/', $param)) {
-		$param .= ($param ? '&' : '') . 'entity=' . ( ! empty($object->entity) ? $object->entity : $conf->entity);
-	}
-
-	$hookmanager->initHooks(array('formfile'));
-
-	// Get list of files
-	$file_list = null;
-	if ( ! empty($filedir)) {
-		$file_list = dol_dir_list($filedir, 'files', 0, '(\.odt|\.zip|\.pdf)', '', 'date', SORT_DESC, 1);
-	}
-	if ($hideifempty && empty($file_list)) return '';
-
-	$out         = '';
-	$forname     = 'builddoc';
-	$headershown = 0;
-	$showempty   = 0;
-
-	$out .= "\n" . '<!-- Start show_document -->' . "\n";
-
-	$titletoshow                       = $langs->trans("Documents");
-	if ( ! empty($title)) $titletoshow = ($title == 'none' ? '' : $title);
-
-	// Show table
-	if ($genallowed) {
-		$submodulepart = $modulepart;
-		// modulepart = 'nameofmodule' or 'nameofmodule:NameOfObject'
-		$tmp = explode(':', $modulepart);
-		if ( ! empty($tmp[1])) {
-			$modulepart    = $tmp[0];
-			$submodulepart = $tmp[1];
-		}
-
-		// For normalized external modules.
-		$file = dol_buildpath('/' . $modulepart . '/core/modules/' . $modulepart . '/digiriskdocuments/' . strtolower($submodulepart) . '/modules_' . strtolower($submodulepart) . '.php', 0);
-		include_once $file;
-
-		$class = 'ModeleODT' . $submodulepart;
-
-		if (class_exists($class)) {
-			if (preg_match('/specimen/', $param)) {
-				$type      = strtolower($class) . 'specimen';
-				include_once DOL_DOCUMENT_ROOT . '/core/lib/functions2.lib.php';
-				$modellist = getListOfModels($db, $type, 0);
-			} else {
-				$modellist = call_user_func($class . '::liste_modeles', $db, 100);
-			}
-		} else {
-			dol_print_error($db, "Bad value for modulepart '" . $modulepart . "' in showdocuments");
-			return -1;
-		}
-
-		// Set headershown to avoid to have table opened a second time later
-		$headershown = 1;
-
-		if (empty($buttonlabel)) $buttonlabel = $langs->trans('Generate');
-
-		if ($conf->browser->layout == 'phone') $urlsource .= '#' . $forname . '_form'; // So we switch to form after a generation
-		if (empty($noform)) $out                          .= '<form action="' . $urlsource . (empty($conf->global->MAIN_JUMP_TAG) ? '' : '#builddoc') . '" id="' . $forname . '_form" method="post">';
-
-		if (preg_match('/TicketDocument/', $submodulepart)) {
-			$action = 'digiriskbuilddoc';
-		} else {
-			$action = 'builddoc';
-		}
-
-		$out                                              .= '<input type="hidden" name="action" value="'. $action .'">';
-		$out                                              .= '<input type="hidden" name="token" value="' . newToken() . '">';
-
-		$out .= load_fiche_titre($titletoshow, '', '');
-		$out .= '<div class="div-table-responsive-no-min">';
-		$out .= '<table class="liste formdoc noborder centpercent">';
-
-		$out .= '<tr class="liste_titre">';
-
-		$addcolumforpicto = ($delallowed || $morepicto);
-		$colspan          = (3 + ($addcolumforpicto ? 1 : 0)); $colspanmore = 0;
-
-		$out .= '<th colspan="' . $colspan . '" class="formdoc liste_titre maxwidthonsmartphone center">';
-		// Model
-		if ( ! empty($modellist)) {
-			asort($modellist);
-			$out      .= '<span class="hideonsmartphone"> <i class="fas fa-file-word"></i> </span>';
-			$modellist = array_filter($modellist, 'remove_index');
-			if (is_array($modellist)) {
-				foreach ($modellist as $key => $modellistsingle) {
-					$arrayvalues              = preg_replace('/template_/', '', $modellistsingle);
-					$modellist[$key] = $langs->trans($arrayvalues);
-					$constforval = 'DIGIRISKDOLIBARR_' .strtoupper($submodulepart). '_DEFAULT_MODEL';
-					$defaultmodel = preg_replace('/_odt/', '.odt', $conf->global->$constforval);
-					if ('template_' . $defaultmodel == $modellistsingle) {
-						$modelselected = $key;
-					}
-				}
-			}
-			$morecss                                        = 'maxwidth200';
-			if ($conf->browser->layout == 'phone') $morecss = 'maxwidth100';
-			$out                                           .= $form::selectarray('model', $modellist, $modelselected, $showempty, 0, 0, '', 0, 0, 0, '', $morecss);
-
-			if ($conf->use_javascript_ajax) {
-				$out .= ajax_combobox('model');
-			}
-
-			// Button
-			if ($active) {
-				$genbutton .= '<button class="wpeo-button button-square-40 button-blue wpeo-tooltip-event" id="' . $forname . '_generatebutton" name="' . $forname . '_generatebutton" type="submit" aria-label="' . $langs->trans('Generate') . '"><i class="fas fa-print button-icon"></i></button>';
-			} else {
-				$genbutton .= '<i class="fas fa-exclamation-triangle pictowarning wpeo-tooltip-event" aria-label="' . $langs->trans($tooltiptext) . '"></i>';
-				$genbutton .= '<button class="wpeo-button button-square-40 button-disable" name="' . $forname . '_generatebutton"><i class="fas fa-print button-icon"></i></button>';
-			}
-
-			//		if ( ! $allowgenifempty && ! is_array($modellist) && empty($modellist)) $genbutton .= ' disabled';
-			//		$genbutton                                                                         .= '>';
-			//		if ($allowgenifempty && ! is_array($modellist) && empty($modellist) && empty($conf->dol_no_mouse_hover) && $modulepart != 'unpaid') {
-			//			$langs->load("errors");
-			//			$genbutton .= ' ' . img_warning($langs->transnoentitiesnoconv("WarningNoDocumentModelActivated"));
-			//		}
-			//		if ( ! $allowgenifempty && ! is_array($modellist) && empty($modellist) && empty($conf->dol_no_mouse_hover) && $modulepart != 'unpaid') $genbutton = '';
-			//		if (empty($modellist) && ! $showempty && $modulepart != 'unpaid') $genbutton                                                                      = '';
-			$out                                                                                                                                             .= $genbutton;
-			//		if ( ! $active) {
-			//			$htmltooltip  = '';
-			//			$htmltooltip .= $tooltiptext;
-			//
-			//			$out .= '<span class="center">';
-			//			$out .= $form->textwithpicto($langs->trans('Help'), $htmltooltip, 1, 0);
-			//			$out .= '</span>';
-			//		}
-		} else {
-			$out .= '<div class="float">' . $langs->trans("Files") . '</div>';
-		}
-
-		$out .= '</th>';
-
-		if ( ! empty($hookmanager->hooks['formfile'])) {
-			foreach ($hookmanager->hooks['formfile'] as $module) {
-				if (method_exists($module, 'formBuilddocLineOptions')) {
-					$colspanmore++;
-					$out .= '<th></th>';
-				}
-			}
-		}
-		if ($conf->global->DIGIRISKDOLIBARR_MANUAL_PDF_GENERATION > 0) {
-			$out .= '<td></td>';
-		}
-		$out .= '</tr>';
-
-		// Execute hooks
-		$parameters = array('colspan' => ($colspan + $colspanmore), 'socid' => (isset($GLOBALS['socid']) ? $GLOBALS['socid'] : ''), 'id' => (isset($GLOBALS['id']) ? $GLOBALS['id'] : ''), 'modulepart' => $modulepart);
-		if (is_object($hookmanager)) {
-			$hookmanager->executeHooks('formBuilddocOptions', $parameters, $GLOBALS['object']);
-			$out    .= $hookmanager->resPrint;
-		}
-	}
-
-	// Get list of files
-	if ( ! empty($filedir)) {
-		$link_list = array();
-		$addcolumforpicto = ($delallowed || $morepicto);
-		$colspan          = (3 + ($addcolumforpicto ? 1 : 0)); $colspanmore = 0;
-		if (is_object($object) && $object->id > 0) {
-			require_once DOL_DOCUMENT_ROOT . '/core/class/link.class.php';
-			$link      = new Link($db);
-			$sortfield = $sortorder = null;
-			$link->fetchAll($link_list, $object->element, $object->id, $sortfield, $sortorder);
-		}
-
-		$out .= '<!-- html.formfile::showdocuments -->' . "\n";
-
-		// Show title of array if not already shown
-		if (( ! empty($file_list) || ! empty($link_list) || preg_match('/^massfilesarea/', $modulepart))
-			&& ! $headershown) {
-			$headershown = 1;
-			$out        .= '<div class="titre">' . $titletoshow . '</div>' . "\n";
-			$out        .= '<div class="div-table-responsive-no-min">';
-			$out        .= '<table class="noborder centpercent" id="' . $modulepart . '_table">' . "\n";
-		}
-
-		// Loop on each file found
-		if (is_array($file_list)) {
-			foreach ($file_list as $file) {
-				// Define relative path for download link (depends on module)
-				$relativepath                    = $file["name"]; // Cas general
-				if ($modulesubdir) $relativepath = $modulesubdir . "/" . $file["name"]; // Cas propal, facture...
-
-				$out .= '<tr class="oddeven">';
-
-				$documenturl                                                      = DOL_URL_ROOT . '/document.php';
-				if (isset($conf->global->DOL_URL_ROOT_DOCUMENT_PHP)) $documenturl = $conf->global->DOL_URL_ROOT_DOCUMENT_PHP; // To use another wrapper
-
-				// Show file name with link to download
-				$out .= '<td class="minwidth200">';
-				$out .= '<a class="documentdownload paddingright" href="' . $documenturl . '?modulepart=' . $modulepart . '&amp;file=' . urlencode($relativepath) . ($param ? '&' . $param : '') . '"';
-
-				$mime                                  = dol_mimetype($relativepath, '', 0);
-				if (preg_match('/text/', $mime)) $out .= ' target="_blank"';
-				$out                                  .= '>';
-				$out                                  .= img_mime($file["name"], $langs->trans("File") . ': ' . $file["name"]);
-				$out                                  .= dol_trunc($file["name"], 150);
-				$out                                  .= '</a>' . "\n";
-				$out                                  .= '</td>';
-
-				// Show file size
-				$size = ( ! empty($file['size']) ? $file['size'] : dol_filesize($filedir . "/" . $file["name"]));
-				$out .= '<td class="nowrap right">' . dol_print_size($size, 1, 1) . '</td>';
-
-				// Show file date
-				$date = ( ! empty($file['date']) ? $file['date'] : dol_filemtime($filedir . "/" . $file["name"]));
-				$out .= '<td class="nowrap right">' . dol_print_date($date, 'dayhour', 'tzuser') . '</td>';
-				$extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-
-				if ($conf->global->DIGIRISKDOLIBARR_MANUAL_PDF_GENERATION > 0) {
-					$out .= '<td class="right pdf-generation">';
-
-					if ($extension == 'odt') {
-						$tmpurlsource = preg_replace('/#[a-zA-Z0-9_]*$/', '', $urlsource);
-						$out .= '<a href="' . $tmpurlsource . ((strpos($tmpurlsource, '?') === false) ? '?' : '&amp;') . 'action=pdfGeneration&amp;file=' . urlencode($relativepath) . '&token=' . newToken();
-						$out .= ($param ? '&amp;' . $param : '');
-						$out .= '">' . img_picto($langs->trans("PDFGeneration"), 'fontawesome_fa-file-pdf_fas_red') . '</a>';
-						$out .= ' ' . $form->textwithpicto('', $langs->trans('PDFGenerationTooltip'));
-					}
-
-					$out .= '</td>';
-				}
-				if ($delallowed || $morepicto) {
-					$out .= '<td class="right nowraponall">';
-					if ($delallowed) {
-						$tmpurlsource = preg_replace('/#[a-zA-Z0-9_]*$/', '', $urlsource);
-						$out         .= '<a href="' . $tmpurlsource . ((strpos($tmpurlsource, '?') === false) ? '?' : '&amp;') . 'action=' . $removeaction . '&amp;file=' . urlencode($relativepath) . '&token=' . newToken();
-						$out         .= ($param ? '&amp;' . $param : '');
-						$out         .= '">' . img_picto($langs->trans("Delete"), 'delete') . '</a>';
-					}
-					if ($morepicto) {
-						$morepicto = preg_replace('/__FILENAMEURLENCODED__/', urlencode($relativepath), $morepicto);
-						$out      .= $morepicto;
-					}
-					$out .= '</td>';
-				}
-
-				if (is_object($hookmanager)) {
-					$parameters = array('colspan' => ($colspan + $colspanmore), 'socid' => (isset($GLOBALS['socid']) ? $GLOBALS['socid'] : ''), 'id' => (isset($GLOBALS['id']) ? $GLOBALS['id'] : ''), 'modulepart' => $modulepart, 'relativepath' => $relativepath);
-					$res        = $hookmanager->executeHooks('formBuilddocLineOptions', $parameters, $file);
-					if (empty($res)) {
-						$out .= $hookmanager->resPrint; // Complete line
-						$out .= '</tr>';
-					} else {
-						$out = $hookmanager->resPrint; // Replace all $out
-					}
-				}
-			}
-		}
-		// Loop on each link found
-		//      if (is_array($link_list))
-		//      {
-		//          $colspan = 2;
-		//
-		//          foreach ($link_list as $file)
-		//          {
-		//              $out .= '<tr class="oddeven">';
-		//              $out .= '<td colspan="'.$colspan.'" class="maxwidhtonsmartphone">';
-		//              $out .= '<a data-ajax="false" href="'.$file->url.'" target="_blank">';
-		//              $out .= $file->label;
-		//              $out .= '</a>';
-		//              $out .= '</td>';
-		//              $out .= '<td class="right">';
-		//              $out .= dol_print_date($file->datea, 'dayhour');
-		//              $out .= '</td>';
-		//              if ($delallowed || $printer || $morepicto) $out .= '<td></td>';
-		//              $out .= '</tr>'."\n";
-		//          }
-		//      }
-
-		if (count($file_list) == 0 && count($link_list) == 0 && $headershown) {
-			$out .= '<tr><td colspan="' . (3 + ($addcolumforpicto ? 1 : 0)) . '" class="opacitymedium">' . $langs->trans("None") . '</td></tr>' . "\n";
-		}
-	}
-
-	if ($headershown) {
-		// Affiche pied du tableau
-		$out .= "</table>\n";
-		$out .= "</div>\n";
-		if ($genallowed) {
-			if (empty($noform)) $out .= '</form>' . "\n";
-		}
-	}
-	$out .= '<!-- End show_document -->' . "\n";
-
-	return $out;
-}
-
-/**
- *	Exclude index.php files from list of models for document generation
- *
- * @param   string $model
- * @return  string '' or $model
- */
-function remove_index($model)
-{
-	if (preg_match('/index.php/', $model)) {
-		return '';
-	} else {
-		return $model;
-	}
+    global $conf, $db, $langs, $user;
+
+    $action = GETPOST('action', 'aZ09');
+    if (!in_array($action, ['saveOrganization', 'renameElement', 'quickCreateElement', 'deleteElement'])) {
+        return;
+    }
+
+    require_once __DIR__ . '/../class/digiriskelement.class.php';
+
+    if ($action == 'saveOrganization' && $user->rights->digiriskdolibarr->digiriskelement->write) {
+        $arrayIds       = preg_split('/,/', GETPOST('ids'));
+        $arrayParentIds = preg_split('/,/', GETPOST('parent_ids'));
+
+        if (!empty($arrayIds)) {
+            foreach ($arrayIds as $position => $elementId) {
+                $digiriskelement = new DigiriskElement($db);
+                $digiriskelement->fetch((int) $elementId);
+                $digiriskelement->ranks     = $position + 1;
+                $digiriskelement->fk_parent = $arrayParentIds[$position];
+                $digiriskelement->update($user);
+            }
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success']);
+        exit;
+    }
+
+    if ($action == 'renameElement') {
+        $data      = json_decode(file_get_contents('php://input'), true);
+        $elementId = (int) $data['elementId'];
+        $newLabel  = trim($data['label']);
+
+        header('Content-Type: application/json');
+
+        if ($elementId > 0 && !empty($newLabel) && $user->rights->digiriskdolibarr->digiriskelement->write) {
+            $digiriskelement = new DigiriskElement($db);
+            $digiriskelement->fetch($elementId);
+            $digiriskelement->label = $newLabel;
+            $result = $digiriskelement->update($user);
+
+            if ($result > 0) {
+                echo json_encode(['status' => 'success', 'label' => $newLabel]);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => $digiriskelement->error]);
+            }
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid data']);
+        }
+        exit;
+    }
+
+    if ($action == 'quickCreateElement') {
+        $elementType  = GETPOST('element_type', 'alpha');
+        $fkParent     = GETPOSTINT('fk_parent');
+        $label        = trim(GETPOST('label', 'alphanohtml'));
+        $description  = trim(GETPOST('description', 'restricthtml'));
+        $showInSelect = GETPOSTINT('show_in_selector');
+
+        if (!empty($label) && $fkParent > 0 && in_array($elementType, ['groupment', 'workunit']) && $user->rights->digiriskdolibarr->digiriskelement->write) {
+            $digiriskelement                   = new DigiriskElement($db);
+            $digiriskelement->element_type     = $elementType;
+            $digiriskelement->label            = $label;
+            $digiriskelement->description      = $description;
+            $digiriskelement->fk_parent        = $fkParent;
+            $digiriskelement->show_in_selector = $showInSelect;
+            $digiriskelement->entity           = $conf->entity;
+            $digiriskelement->status           = 1;
+
+            $result = $digiriskelement->create($user);
+
+            if ($result > 0) {
+                setEventMessages($langs->trans('ObjectCreated', $digiriskelement->ref), null, 'mesgs');
+            } else {
+                setEventMessages($digiriskelement->error, $digiriskelement->errors, 'errors');
+            }
+        } else {
+            setEventMessages($langs->trans('ErrorFieldRequired', $langs->transnoentitiesnoconv('Label')), null, 'errors');
+        }
+
+        header('Location: ' . $_SERVER['PHP_SELF'] . '?mainmenu=' . GETPOST('mainmenu', 'alpha') . '&leftmenu=' . GETPOST('leftmenu', 'alpha'));
+        exit;
+    }
+
+    if ($action == 'deleteElement') {
+        $deleteId = GETPOSTINT('deleteid');
+
+        if ($deleteId > 0 && $user->rights->digiriskdolibarr->digiriskelement->delete) {
+            $digiriskelement = new DigiriskElement($db);
+            $result          = $digiriskelement->fetch($deleteId);
+
+            if ($result > 0) {
+                if ($digiriskelement->delete($user) > 0) {
+                    setEventMessages($langs->trans('RecordDeleted'), null, 'mesgs');
+                } else {
+                    setEventMessages($digiriskelement->error, $digiriskelement->errors, 'errors');
+                }
+            } else {
+                setEventMessages($langs->trans('ErrorRecordNotFound'), null, 'errors');
+            }
+        } else {
+            setEventMessages($langs->trans('NotEnoughPermissions'), null, 'errors');
+        }
+
+        header('Location: ' . $_SERVER['PHP_SELF'] . '?mainmenu=' . GETPOST('mainmenu', 'alpha') . '&leftmenu=' . GETPOST('leftmenu', 'alpha'));
+        exit;
+    }
 }
 
 /**
@@ -543,44 +155,37 @@ function remove_index($model)
 * @return	void
 *@throws Exception
 */
-function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arrayofcss =  array(), $morequerystring = '', $morecssonbody = '', $replacemainareaby = '')
+function digirisk_header($title = '', $helpUrl = '', $arrayofjs = [], $arrayofcss =  [], $morequerystring = '', $morecssonbody = '', $replacemainareaby = '')
 {
-	global $conf, $langs, $db, $user;
+	global $conf, $langs, $db, $user, $moduleNameLowerCase;
 
-	require_once __DIR__ . '/../class/digiriskelement.class.php';
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/groupment/mod_groupment_standard.php';
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/groupment/mod_groupment_sirius.php';
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/workunit/mod_workunit_standard.php';
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/workunit/mod_workunit_canopus.php';
-	$mod_groupment = new $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON();
-	$mod_workunit  = new $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON();
+	// Process GP/UT organization actions (drag & drop save, rename, quick add, delete) before any HTML output
+	digirisk_organization_actions();
 
-	$groupment_prefix = dol_strlen($mod_groupment->prefix) > 0 ? $mod_groupment->prefix : $conf->global->DIGIRISKDOLIBARR_GROUPMENT_SIRIUS_ADDON;
-	$groupment_prefix = preg_match('/{/',$groupment_prefix) ? preg_split('/{/', $groupment_prefix)[0] : $groupment_prefix;
+	require_once __DIR__ . '/../class/digiriskelement/groupment.class.php';
+	require_once __DIR__ . '/../class/digiriskelement/workunit.class.php';
 
-	$workunit_prefix = dol_strlen($mod_workunit->prefix) > 0 ? $mod_workunit->prefix : $conf->global->DIGIRISKDOLIBARR_WORKUNIT_CANOPUS_ADDON;
-	$workunit_prefix = preg_match('/{/',$workunit_prefix) ? preg_split('/{/', $workunit_prefix)[0] : $workunit_prefix;
+	$numberingModules = [
+		'digiriskelement/groupment' => $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON,
+		'digiriskelement/workunit' => $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON,
+	];
 
-	llxHeader('', $title, $help_url, '', '', '', $arrayofjs, $arrayofcss, $morequerystring, $morecssonbody);
+	list($modGroupment, $modWorkUnit) = saturne_require_objects_mod($numberingModules, $moduleNameLowerCase);
+
+	saturne_header(1, '', $title, $helpUrl, '', 0, 0, $arrayofjs, $arrayofcss, $morequerystring, $morecssonbody);
 
 	//Body navigation digirisk
 	$object = new DigiriskElement($db);
-	if ($conf->global->DIGIRISKDOLIBARR_SHOW_HIDDEN_DIGIRISKELEMENT) {
-		$objects = $object->fetchAll('',  'ranks',  0,  0);
-	} else {
-		$objects = $object->fetchAll('',  'ranks',  0,  0, array('customsql' => 'status > 0'));
-	}
+	// The organization panel never lists trashed/deleted elements (status < 0), regardless of DIGIRISKDOLIBARR_SHOW_HIDDEN_DIGIRISKELEMENT
+	$objects = $object->fetchAll('',  'ranks',  0,  0, array('customsql' => 't.status > 0 AND t.entity IN ('. $conf->entity .')'));
 
-
-	$results = array();
+	$digiriskElementTree = array();
 	if (!is_array($objects) && $objects<0) {
 		setEventMessages($object->error, $object->errors, 'errors');
 	} elseif (is_array($objects) && count($objects)>0) {
-		$results = recurse_tree(0, 0, $objects);
+		$digiriskElementTree = recurse_tree(0, 0, $objects);
 	}
 	?>
-
-	<?php require_once __DIR__ . '/../core/tpl/medias/digiriskdolibarr_medias_gallery_modal.tpl.php'; ?>
 
 	<div id="id-container" class="id-container page-ut-gp-list">
 		<input type="hidden" name="token" value="<?php echo newToken(); ?>">
@@ -588,22 +193,22 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 			<div class="side-nav-responsive"><i class="fas fa-bars"></i> <?php echo "Navigation UT/GP"; ?></div>
 			<div id="id-left">
 				<div class="digirisk-wrap wpeo-wrap">
-					<div class="navigation-container">
+					<div class="navigation-container organization-tree">
 						<div class="society-header">
-							<a class="linkElement" href="../digiriskstandard/digiriskstandard_card.php?id=<?php echo $conf->global->DIGIRISKDOLIBARR_ACTIVE_STANDARD ?>">
+							<a class="linkElement" href="<?php echo dol_buildpath('/custom/digiriskdolibarr/view/digiriskstandard/digiriskstandard_card.php?id=' . $conf->global->DIGIRISKDOLIBARR_ACTIVE_STANDARD, 1);?>">
 								<span class="icon fas fa-building fa-fw"></span>
 								<div class="title"><?php echo $conf->global->MAIN_INFO_SOCIETE_NOM ?></div>
-								<?php if ($user->rights->digiriskdolibarr->digiriskelement->write) : ?>
-									<div class="add-container">
-										<a id="newGroupment" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=groupment&fk_parent=0">
-											<div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>"><strong><?php echo $groupment_prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
-										</a>
-										<a id="newWorkunit" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=workunit&fk_parent=0">
-											<div class="wpeo-button button-square-40 wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>"><strong><?php echo $workunit_prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
-										</a>
-									</div>
-								<?php endif; ?>
 							</a>
+                            <?php if ($user->rights->digiriskdolibarr->digiriskelement->write) : ?>
+                                <div class="add-container">
+                                    <a id="newGroupment" href="<?php echo dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php?action=create&element_type=groupment&fk_parent=0', 1);?>">
+                                        <div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>"><strong><?php echo $modGroupment->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                                    </a>
+                                    <a id="newWorkunit" href="<?php echo dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php?action=create&element_type=workunit&fk_parent=0', 1);?>">
+                                        <div class="wpeo-button button-square-40 wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>"><strong><?php echo $modWorkUnit->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                                    </a>
+                                </div>
+                            <?php endif; ?>
 						</div>
 						<?php if ( ! empty($objects) && $objects > 0) : ?>
 							<div class="toolbar">
@@ -612,22 +217,22 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 							</div>
 						<?php else : ?>
 							<div class="society-header">
-								<a id="newGroupment" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=groupment&fk_parent=0">
-									<div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>"><strong><?php echo $groupment_prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+								<a id="newGroupment" href="<?php echo dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php?action=create&element_type=groupment&fk_parent=0', 1);?>">
+									<div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>"><strong><?php echo $modGroupment->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
 								</a>
-								<a id="newWorkunit" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=workunit&fk_parent=0">
-									<div class="wpeo-button button-square-40 wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>"><strong><?php echo $workunit_prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+								<a id="newWorkunit" href="<?php echo dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php?action=create&element_type=workunit&fk_parent=0', 1);?>">
+									<div class="wpeo-button button-square-40 wpeo-tooltip-event" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>"><strong><?php echo $modWorkUnit->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
 								</a>
 							</div>
 						<?php endif; ?>
 
-						<ul class="workunit-list">
+						<ul class="workunit-list space space-0 first-space" id="space0" value="0">
 							<script>
 								if (localStorage.maximized == 'false') {
 									$('#id-left').attr('style', 'display:none !important')
 								}
 							</script>
-							<?php display_recurse_tree($results); ?>
+							<?php display_recurse_tree($digiriskElementTree); ?>
 							<script>
 								// Get previous menu to display it
 								var MENU = localStorage.menu;
@@ -643,7 +248,12 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 									jQuery( '#unit'+id ).addClass( 'toggled' );
 								});
 
-								<?php $object->fetch(GETPOST('id') ?: GETPOST('fromid')); ?>
+								<?php
+								$idToFetch = GETPOSTINT('id') ?: GETPOSTINT('fromid');
+								if ($idToFetch > 0) {
+									$object->fetch($idToFetch);
+								}
+								?>
 								var idParent = <?php echo json_encode($object->fk_parent);?> ;
 
 								jQuery( '#menu'+idParent).removeClass( 'fa-chevron-right').addClass( 'fa-chevron-down' );
@@ -657,7 +267,7 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 								id = !id ? params.get('fromid') : id
 
 								if ((document.URL.match(/digiriskelement/) || document.URL.match(/accident/)) && !document.URL.match(/type=standard/)) {
-									var elementBranch = <?php echo json_encode($object->getBranch(GETPOST('id'))); ?>;
+									var elementBranch = <?php echo json_encode($idToFetch > 0 ? $object->getBranch($idToFetch) : []); ?>;
 									elementBranch.forEach((id) =>  {
 										jQuery( '#menu'+id).removeClass( 'fa-chevron-right').addClass( 'fa-chevron-down' );
 										jQuery( '#unit'+id ).addClass( 'toggled' );
@@ -678,6 +288,9 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 			</div>
 		</div>
 	<?php
+	// Organization tree dialogs + JS config (shared with the standalone organization page)
+	require __DIR__ . '/../core/tpl/digiriskelement/digiriskelement_organization_tree.tpl.php';
+
 	// main area
 	if ($replacemainareaby) {
 		print $replacemainareaby;
@@ -687,365 +300,229 @@ function digiriskHeader($title = '', $help_url = '', $arrayofjs = array(), $arra
 }
 
 /**
- *	Recursive tree process
+ * Recursive tree process
  *
- * @param	int             $parent Element Parent id of Digirisk Element object
- * @param 	int             $niveau Depth of tree
- * @param 	array           $array  Global Digirisk Element list
- * @return	array           $result Global Digirisk Element list after recursive process
+ * @param  int   $parentID                  Element parent id of Digirisk Element object
+ * @param  int   $depth                     Depth of tree
+ * @param  array $digiriskElements          Global Digirisk Element list
+ * @param  bool  $addCurrentDigiriskElement Add current digirisk element info
+ * @return array $tree                      Global Digirisk Element list after recursive process
  */
-function recurse_tree($parent, $niveau, $array)
+function recurse_tree(int $parentID, int $depth, array $digiriskElements, bool $addCurrentDigiriskElement = false): array
 {
-	$result = array();
-	foreach ($array as $noeud) {
-		if ($parent == $noeud->fk_parent) {
-			$result[$noeud->id] = array(
-				'id'       => $noeud->id,
-				'depth'    => array('depth' . $noeud->id => $niveau),
-				'object'   => $noeud,
-				'children' => recurse_tree($noeud->id, ($niveau + 1), $array),
-			);
-		}
-	}
-	return $result;
+    $tree = [];
+
+    foreach ($digiriskElements as $digiriskElement) {
+        if ($digiriskElement->fk_parent == $parentID || ($digiriskElement->id == $parentID && $addCurrentDigiriskElement)) {
+            $tree[$digiriskElement->id] = [
+                'id'       => $digiriskElement->id,
+                'depth'    => $depth,
+                'object'   => $digiriskElement,
+                'children' => recurse_tree($digiriskElement->id, $depth + 1, $digiriskElements)
+            ];
+        }
+    }
+
+    return $tree;
+}
+
+function flatten_tree($tree)
+{
+    $flat = [];
+
+    foreach ($tree as $node) {
+        $flat[$node['id']] = [
+            'object' => $node['object'],
+            'depth'  => $node['depth']
+        ];
+
+        if (!empty($node['children'])) {
+            $flat += flatten_tree($node['children']);
+        }
+    }
+
+    return $flat;
 }
 
 /**
- *	Display Recursive tree process
+ *	Display Recursive tree process for the left GP/UT navigation panel.
+ *  Keeps the navigation hooks (.unit / #unit / #menu / data-object-id / .sub-list / .toggled)
+ *  used by saturneElement.js and adds the organization interactions: drag & drop reorder,
+ *  inline rename, quick add, delete and risk cotation badges.
  *
- * @param	array $results Global Digirisk Element list after recursive process
+ * @param	array $digiriskElementTree Global Digirisk Element list after recursive process
+ * @param	array $riskInfos           Risk cotations indexed by element id (Risk::loadRiskInfos)
+ * @param	int   $i                   Current depth
  * @return	void
  */
-function display_recurse_tree($results)
+function display_recurse_tree($digiriskElementTree, $i = 1)
 {
-	include_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
+    include_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
 
-	global $conf, $langs, $user, $db;
+    global $conf, $langs, $user, $moduleNameLowerCase;
 
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/groupment/mod_groupment_standard.php';
-	require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/workunit/mod_workunit_standard.php';
-	require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmdirectory.class.php';
+    $numberingModules = [
+        'digiriskelement/groupment' => $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON,
+        'digiriskelement/workunit'  => $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON,
+    ];
 
-	$action = GETPOST('action');
-	$ecmdir = new EcmDirectory($db);
-	$error  = 0;
+    list($modGroupment, $modWorkUnit) = saturne_require_objects_mod($numberingModules, $moduleNameLowerCase);
 
-	if ( ! $error && $action == "addDigiriskElementFiles") {
-		$data = json_decode(file_get_contents('php://input'), true);
+    if (!$user->rights->digiriskdolibarr->digiriskelement->read) {
+        print $langs->trans('YouDontHaveTheRightToSeeThis');
+        return;
+    }
 
-		$digiriskelement_id = $data['digiriskelement_id'];
-		$filenames          = $data['filenames'];
+    if (empty($digiriskElementTree)) {
+        return;
+    }
 
-		$digiriskelement = new DigiriskElement($db);
-		$digiriskelement->fetch($digiriskelement_id);
-		$pathToDigiriskElementPhoto = $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $digiriskelement->element_type . '/' . $digiriskelement->ref ;
-		$filenames                  = preg_split('/vVv/', $filenames);
-		array_pop($filenames);
+    $riskType = GETPOSTISSET('risk_type') && !empty(GETPOST('risk_type')) ? GETPOST('risk_type') : 'risk';
 
-		if ( ! (empty($filenames))) {
-			$digiriskelement->photo = $filenames[0];
-			foreach ($filenames as $filename) {
-				if (is_file($conf->ecm->multidir_output[$conf->entity] . '/digiriskdolibarr/medias/' . $filename)) {
-					$pathToECMPhoto = $conf->ecm->multidir_output[$conf->entity] . '/digiriskdolibarr/medias/' . $filename;
+    foreach ($digiriskElementTree as $element) {
+        $obj         = $element['object'];
+        $type        = $obj->element_type;
+        $hasChildren = ($type == 'groupment' && count($element['children']) > 0);
+        $isTrash     = ($obj->id == $conf->global->DIGIRISKDOLIBARR_DIGIRISKELEMENT_TRASH);
 
-					if ( ! is_dir($conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $digiriskelement->element_type . '/')) {
-						mkdir($conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $digiriskelement->element_type . '/');
-					}
-					if ( ! is_dir($pathToDigiriskElementPhoto)) {
-						mkdir($pathToDigiriskElementPhoto);
-					}
-					copy($pathToECMPhoto, $pathToDigiriskElementPhoto . '/' . $filename);
+        $navLink = $user->rights->digiriskdolibarr->risk->read
+            ? dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_risk.php?id=' . $obj->id . '&risk_type=' . $riskType, 1)
+            : dol_buildpath('/custom/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php?id=' . $obj->id, 1);
+        ?>
+        <?php if ($isTrash) : ?>
+        <hr>
+        <?php endif; ?>
+        <li class="unit route ui-sortable-handle type-<?php echo $type; ?> level-<?php echo $i; ?>" id="unit<?php echo $obj->id; ?>" data-object-id="<?php echo $obj->id; ?>" data-route-id="<?php echo $obj->id; ?>" value="<?php echo $i; ?>">
+            <div class="unit-container row-container <?php echo $type; ?>">
+                <?php if ($user->rights->digiriskdolibarr->digiriskelement->write && !$isTrash) : ?>
+                <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
+                <?php endif; ?>
 
-					$destfull = $pathToDigiriskElementPhoto . '/' . $filename;
-					// Create thumbs
-					vignette($destfull, $conf->global->DIGIRISKDOLIBARR_MEDIA_MAX_WIDTH_LARGE, $conf->global->DIGIRISKDOLIBARR_MEDIA_MAX_HEIGHT_LARGE, '_large', 50, "thumbs");
-					vignette($destfull, $conf->global->DIGIRISKDOLIBARR_MEDIA_MAX_WIDTH_MEDIUM, $conf->global->DIGIRISKDOLIBARR_MEDIA_MAX_HEIGHT_MEDIUM, '_medium', 50, "thumbs");
-					vignette($destfull, 480, 270, '_small', 50, "thumbs");
-					// Create mini thumbs for image (Ratio is near 16/9)
-					vignette($destfull, 128, 72, '_mini', 50, "thumbs");
-				}
-			}
-			$digiriskelement->update($user);
-		}
-		return;
-	}
+                <?php if ($type == 'groupment' && $hasChildren) : ?>
+                <div class="toggle-unit chevron">
+                    <i class="toggle-icon fas fa-chevron-right" id="menu<?php echo $obj->id; ?>"></i>
+                </div>
+                <?php elseif ($type == 'groupment') : ?>
+                <div class="chevron"><i class="fas fa-chevron-right chevron-empty"></i></div>
+                <?php else : ?>
+                <div class="spacer"></div>
+                <?php endif; ?>
 
-	if ( ! $error && $action == "addDigiriskElementPhotoToFavorite") {
-		$data = json_decode(file_get_contents('php://input'), true);
+                <span class="open-media-gallery add-media modal-open photo-container digirisk-element-photo-<?php echo $obj->id; ?>" value="0">
+                    <input type="hidden" class="modal-options" data-modal-to-open="media_gallery" data-from-id="<?php echo $obj->id; ?>" data-from-type="<?php echo $type; ?>" data-from-subtype="photo" data-from-subdir="" data-photo-class="digirisk-element-photo-<?php echo $obj->id; ?>"/>
+                    <?php
+                    $mediaOutput = saturne_show_medias_linked('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $type . '/' . $obj->ref, 'small', 1, 0, 0, 0, 40, 40, 1, 0, 0, $type . '/' . $obj->ref, $obj, 'photo', 0, 0, 0, 1, 'cursorpointer');
+                    if (strpos($mediaOutput, 'nophoto.png') !== false) {
+                        print '<svg class="nophoto-placeholder" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#f0f0f0"/><path d="M20 16a3 3 0 100 6 3 3 0 000-6z" fill="#bbb"/><path d="M14 13h3l1.5-2h3l1.5 2h3a2 2 0 012 2v10a2 2 0 01-2 2H14a2 2 0 01-2-2V15a2 2 0 012-2z" stroke="#bbb" stroke-width="1.5" fill="none"/></svg>';
+                    } else {
+                        print $mediaOutput;
+                    }
+                    ?>
+                </span>
 
-		$digiriskelement_id = $data['digiriskelement_id'];
-		$filename           = $data['filename'];
+                <div class="ref-badge <?php echo $type; ?>-badge">
+                    <a id="slider" class="linkElement id<?php echo $obj->id; ?>" value="<?php echo $obj->id; ?>" href="<?php echo $navLink; ?>"><?php echo $obj->ref; ?></a>
+                </div>
 
-		$digiriskelement = new DigiriskElement($db);
-		$digiriskelement->fetch($digiriskelement_id);
-		$digiriskelement->photo = $filename;
-		$digiriskelement->update($user, true);
-	}
+                <h3 class="title element-label name"><?php echo $obj->label; ?></h3>
 
-	if ( ! $error && $action == "unlinkDigiriskElementFile") {
-		$data = json_decode(file_get_contents('php://input'), true);
-
-		$digiriskelement_id = $data['digiriskelement_id'];
-		$filename           = $data['filename'];
-
-		$digiriskelement = new DigiriskElement($db);
-		$digiriskelement->fetch($digiriskelement_id);
-
-		if ($digiriskelement->id > 0) {
-			$pathToDigiriskElementPhoto = $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $digiriskelement->element_type . '/' . $digiriskelement->ref ;
-
-			//Delete file
-			unlink($pathToDigiriskElementPhoto . '/' . $filename);
-
-			//Delete file thumbs
-			$thumbs_names = getAllThumbsNames($filename);
-			if (!empty($thumbs_names)) {
-				foreach($thumbs_names as $thumb_name) {
-					$thumb_fullname  = $pathToDigiriskElementPhoto . '/thumbs/' . $thumb_name;
-					if (file_exists($thumb_fullname)) {
-						unlink($thumb_fullname);
-					}
-				}
-			}
-
-			if ($digiriskelement->photo == $filename) {
-				$digiriskelement->photo = '';
-				$digiriskelement->update($user, true);
-			}
-		}
-	}
-
-	if ( ! $error && $action == "uploadPhoto" && ! empty($conf->global->MAIN_UPLOAD_DOC)) {
-		// Define relativepath and upload_dir
-		$relativepath                                             = 'digiriskdolibarr/medias';
-		$upload_dir                                               = $conf->ecm->dir_output . '/' . $relativepath;
-		if (is_array($_FILES['userfile']['tmp_name'])) $userfiles = $_FILES['userfile']['tmp_name'];
-		else $userfiles                                           = array($_FILES['userfile']['tmp_name']);
-
-		foreach ($userfiles as $key => $userfile) {
-			if (empty($_FILES['userfile']['tmp_name'][$key])) {
-				$error++;
-				if ($_FILES['userfile']['error'][$key] == 1 || $_FILES['userfile']['error'][$key] == 2) {
-					setEventMessages($langs->trans('ErrorFileSizeTooLarge'), null, 'errors');
-					$submit_file_error_text = array('message' => $langs->trans('ErrorFileSizeTooLarge'), 'code' => '1337');
-				} else {
-					setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("File")), null, 'errors');
-					$submit_file_error_text = array('message' => $langs->trans('ErrorFieldRequired'), 'code' => '1337');
-				}
-			}
-		}
-		if ( ! $error) {
-			$generatethumbs = 1;
-			$res            = digirisk_dol_add_file_process($upload_dir, 0, 1, 'userfile', '', null, '', $generatethumbs);
-			if ($res > 0) {
-				$ecmdir->changeNbOfFiles('+');
-			}
-		}
-	}
-
-	$mod_groupment = new $conf->global->DIGIRISKDOLIBARR_GROUPMENT_ADDON();
-	$mod_workunit  = new $conf->global->DIGIRISKDOLIBARR_WORKUNIT_ADDON();
-
-	$groupment_prefix = dol_strlen($mod_groupment->prefix) > 0 ? $mod_groupment->prefix : $conf->global->DIGIRISKDOLIBARR_GROUPMENT_SIRIUS_ADDON;
-	$groupment_prefix = preg_match('/{/',$groupment_prefix) ? preg_split('/{/', $groupment_prefix)[0] : $groupment_prefix;
-
-	$workunit_prefix = dol_strlen($mod_workunit->prefix) > 0 ? $mod_workunit->prefix : $conf->global->DIGIRISKDOLIBARR_WORKUNIT_CANOPUS_ADDON;
-	$workunit_prefix = preg_match('/{/',$workunit_prefix) ? preg_split('/{/', $workunit_prefix)[0] : $workunit_prefix;
-
-	if (is_array($submit_file_error_text)) {
-		print '<input class="error-medias" value="'. htmlspecialchars(json_encode($submit_file_error_text)) .'">';
-	}
-
-	if ($user->rights->digiriskdolibarr->digiriskelement->read) {
-		if ( ! empty($results)) {
-			foreach ($results as $element) { ?>
-				<?php if ($element['object']->id == $conf->global->DIGIRISKDOLIBARR_DIGIRISKELEMENT_TRASH) : ?>
-				<hr>
-				<?php endif; ?>
-			<li class="unit type-<?php echo $element['object']->element_type; ?>" id="unit<?php  echo $element['object']->id; ?>">
-				<div class="unit-container">
-					<?php if ($element['object']->element_type == 'groupment' && count($element['children'])) { ?>
-					<div class="toggle-unit">
-						<i class="toggle-icon fas fa-chevron-right" id="menu<?php echo $element['object']->id;?>"></i>
-					</div>
-					<?php } else { ?>
-					<div class="spacer"></div>
-					<?php }
-					$nophoto     = DOL_URL_ROOT.'/public/theme/common/nophoto.png';
-					$pathToThumb = DOL_URL_ROOT . '/viewimage.php?modulepart=digiriskdolibarr&entity=' . $conf->entity . '&file=' . urlencode($element['object']->element_type . '/' . $element['object']->ref . '/thumbs/');
-					$filearray   = dol_dir_list($conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $element['object']->element_type . '/' . $element['object']->ref . '/', "files", 0, '', '(\.odt|_preview.*\.png)$', 'position_name', 'asc', 1);
-					if (count($filearray)) {
-						print '<span class="floatleft inline-block valignmiddle divphotoref open-medias-linked modal-open digirisk-element digirisk-element-' . $element['object']->id . '" value="' . $element['object']->id . '">';
-						$img_path =  dol_strlen($element['object']->photo) > 0 ? DOL_URL_ROOT . '/viewimage.php?modulepart=digiriskdolibarr&entity=' . $conf->entity . '&file=' . urlencode($element['object']->element_type . '/' . $element['object']->ref . '/thumbs/' . getThumbName($element['object']->photo)) : $nophoto;
-						print '<img width="50" height="50" class="photo clicked-photo-preview" src="'. $img_path .'" >';
-						print '<input type="hidden" class="filepath-to-digiriskelement" value="' . $pathToThumb . '"/>';
-						print '</span>';
-					} else {
-						?>
-						<div class="open-media-gallery modal-open digiriskelement digirisk-element-<?php echo $element['object']->id ?>" value="<?php  echo $element['object']->id ?>">
-							<input type="hidden" class="type-from" value="digiriskelement"/>
-							<input type="hidden" class="filepath-to-digiriskelement" value="<?php echo $pathToThumb ?>"/>
-							<span class="floatleft inline-block valignmiddle divphotoref"><img width="50" height="50" class="photo photowithmargin clicked-photo-preview" alt="No photo" src="<?php echo $nophoto ?>"></span>
-						</div>
-					<?php } ?>
-					<div class="digirisk-element-medias-modal" style="z-index:1500" value="<?php echo $element['object']->id ?>">
-							<div class="wpeo-modal"  id="digirisk_element_medias_modal_<?php echo $element['object']->id ?>" value="<?php echo $element['object']->id ?>" style="z-index: 1005 !important">
-								<div class="modal-container wpeo-modal-event">
-									<!-- Modal-Header -->
-									<div class="modal-header">
-										<h2 class="modal-title"><?php echo $langs->trans('DigiriskElementMedias') . ' ' . $element['object']->ref ?></h2>
-										<div class="wpeo-button open-media-gallery add-media modal-open" value="<?php echo $element['object']->id ?>">
-											<input type="hidden" class="type-from" value="digiriskelement"/>
-											<span><i class="fas fa-camera"></i>  <?php echo $langs->trans('AddMedia') ?></span>
-										</div>
-										<div class="modal-close"><i class="fas fa-times"></i></div>
-									</div>
-									<!-- Modal Content-->
-									<div class="modal-content" id="#modalContent<?php echo $element['object']->id ?>">
-										<div class="messageSuccessSavePhoto notice hidden">
-											<div class="wpeo-notice notice-success save-photo-success-notice">
-												<div class="notice-content">
-													<div class="notice-title"><?php echo $langs->trans('PhotoWellSaved') ?></div>
-												</div>
-												<div class="notice-close"><i class="fas fa-times"></i></div>
-											</div>
-										</div>
-										<div class="messageErrorSavePhoto notice hidden">
-											<div class="wpeo-notice notice-warning save-photo-error-notice">
-												<div class="notice-content">
-													<div class="notice-title"><?php echo $langs->trans('PhotoNotSaved') ?></div>
-												</div>
-												<div class="notice-close"><i class="fas fa-times"></i></div>
-											</div>
-										</div>
-										<div class="risk-evaluation-container">
-											<div class="risk-evaluation-header">
-											</div>
-											<div class="element-linked-medias element-linked-medias-<?php echo $element['object']->id ?> digirisk-element modal-media-linked">
-												<div class="medias"><i class="fas fa-picture-o"></i><?php echo $langs->trans('Medias'); ?></div>
-												<?php print digirisk_show_medias_linked('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $element['object']->element_type . '/', 'small', 0, 0, 0, 0, 150, 150, 1, 0, 0, $element['object']->element_type, $element['object']); ?>
-											</div>
-										</div>
-									</div>
-									<!-- Modal-Footer -->
-									<div class="modal-footer">
-										<div class="wpeo-button modal-close button-blue">
-											<i class="fas fa-times"></i> <?php echo $langs->trans('CloseModal'); ?>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					<div class="title" id="scores" value="<?php echo $element['object']->id ?>">
-						<?php
-						if ($user->rights->digiriskdolibarr->risk->read) : ?>
-							<a id="slider" class="linkElement id<?php echo $element['object']->id;?>" href="../digiriskelement/digiriskelement_risk.php?id=<?php echo $element['object']->id; ?>">
-								<span class="title-container">
-									<span class="ref"><?php echo $element['object']->ref; ?></span>
-									<span class="name"><?php echo $element['object']->label; ?></span>
-								</span>
-							</a>
-						<?php else : ?>
-							<a id="slider" class="linkElement id<?php echo $element['object']->id;?>" href="../digiriskelement/digiriskelement_card.php?id=<?php echo $element['object']->id; ?>">
-								<span class="title-container">
-									<span class="ref"><?php echo $element['object']->ref; ?></span>
-									<span class="name"><?php echo $element['object']->label; ?></span>
-								</span>
-							</a>
-						<?php endif; ?>
-					</div>
-						<?php if ($user->rights->digiriskdolibarr->digiriskelement->write) : ?>
-							<?php if ($element['object']->element_type == 'groupment') : ?>
-							<div class="add-container">
-								<a id="newGroupment" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=groupment&fk_parent=<?php echo $element['object']->id; ?>">
-									<div
-										class="wpeo-button button-secondary button-square-40 wpeo-tooltip-event"
-										data-direction="bottom" data-color="light"
-										aria-label="<?php echo $langs->trans('NewGroupment'); ?>">
-										<strong><?php echo $groupment_prefix; ?></strong>
-										<span class="button-add animated fas fa-plus-circle"></span>
-									</div>
-								</a>
-								<a id="newWorkunit" href="../digiriskelement/digiriskelement_card.php?action=create&element_type=workunit&fk_parent=<?php echo $element['object']->id; ?>">
-									<div
-										class="wpeo-button button-square-40 wpeo-tooltip-event"
-										data-direction="bottom" data-color="light"
-										aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>">
-										<strong><?php echo $workunit_prefix; ?></strong>
-										<span class="button-add animated fas fa-plus-circle"></span>
-									</div>
-								</a>
-							</div>
-							<?php endif; ?>
-						<?php endif; ?>
-				</div>
-				<ul class="sub-list"><?php display_recurse_tree($element['children']) ?></ul>
-			</li>
-				<?php if ($element['object']->id == $conf->global->DIGIRISKDOLIBARR_DIGIRISKELEMENT_TRASH) : ?>
-				<hr>
-				<?php endif; ?>
-			<?php }
-		}
-	} else {
-		print $langs->trans('YouDontHaveTheRightToSeeThis');
-	}
+                <div class="actions">
+                    <?php if ($user->rights->digiriskdolibarr->digiriskelement->write && $type == 'groupment' && !$isTrash) : ?>
+                    <div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event quick-add-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>" data-parent-id="<?php echo $obj->id; ?>" data-parent-ref="<?php echo $obj->ref; ?>" data-parent-label="<?php echo dol_escape_htmltag($obj->label); ?>" data-type="groupment"><strong><?php echo $modGroupment->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                    <div class="wpeo-button button-square-40 wpeo-tooltip-event quick-add-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>" data-parent-id="<?php echo $obj->id; ?>" data-parent-ref="<?php echo $obj->ref; ?>" data-parent-label="<?php echo dol_escape_htmltag($obj->label); ?>" data-type="workunit"><strong><?php echo $modWorkUnit->prefix; ?></strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                    <?php endif; ?>
+                    <?php if ($user->rights->digiriskdolibarr->digiriskelement->delete && !$isTrash) : ?>
+                    <div class="wpeo-button button-square-40 button-red wpeo-tooltip-event delete-element-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('Delete'); ?>" data-id="<?php echo $obj->id; ?>" data-ref="<?php echo $obj->ref; ?>"><i class="fas fa-trash"></i></div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <ul class="sub-list space space-<?php echo $i; ?> ui-sortable <?php echo $type; ?>" id="space<?php echo $obj->id; ?>" value="<?php echo $i; ?>"><?php display_recurse_tree($element['children'], $i + 1); ?></ul>
+        </li>
+        <?php if ($isTrash) : ?>
+        <hr>
+        <?php endif; ?>
+        <?php
+    }
 }
 
 /**
  *	Display Recursive tree for edit
  *
-* @param	array $results Global Digirisk Element list after recursive process
+* @param	array $digiriskElementTree Global Digirisk Element list after recursive process
 * @param 	int   $i
 * @return	void
 */
-function display_recurse_tree_organization($results, $i = 1)
+function display_recurse_tree_organization($digiriskElementTree, $i = 1, $riskInfos = array())
 {
-	global $langs, $user;
+	global $langs, $user, $conf;
 
 	if ($user->rights->digiriskdolibarr->digiriskelement->read) {
-		if ( ! empty($results)) {
-			foreach ($results as $element) { ?>
-				<li class="route ui-sortable-handle level-<?php echo $i ?>" id="<?php  echo $element['object']->id; ?>" value="<?php echo $i ?>">
-					 <h3 class='title <?php echo $element['object']->element_type ?>'>
-						<span class="ref"><?php echo  $element['object']->ref; ?></span><?php echo $element['object']->label; ?>
-					  </h3>
-					 <span class='ui-icon ui-icon-arrow-4-diag'></span>
-					<ul class="space space-<?php echo $i; ?> ui-sortable  <?php echo $element['object']->element_type ?>" id="space<?php echo $element['object']->id?>" value="<?php echo $i ?>"><?php display_recurse_tree_organization($element['children'], $i + 1) ?></ul>
+		if ( ! empty($digiriskElementTree)) {
+			foreach ($digiriskElementTree as $element) {
+                $obj = $element['object'];
+                $type = $obj->element_type;
+                $hasChildren = ($type == 'groupment' && count($element['children']) > 0);
+                $fk_element = $obj->id;
+
+                $counts = array(4 => 0, 3 => 0, 2 => 0, 1 => 0);
+                if (!empty($riskInfos['current']['riskByRiskAssessmentCotations'][$fk_element])) {
+                    foreach(array(4, 3, 2, 1) as $scale) {
+                        $counts[$scale] = isset($riskInfos['current']['riskByRiskAssessmentCotations'][$fk_element][$scale]) ? $riskInfos['current']['riskByRiskAssessmentCotations'][$fk_element][$scale] : 0;
+                    }
+                }
+            ?>
+				<li class="route ui-sortable-handle level-<?php echo $i ?>" id="<?php  echo $obj->id; ?>" value="<?php echo $i ?>">
+                    <div class="row-container <?php echo $type ?>">
+                        <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
+                        
+                        <div class="chevron">
+                            <?php if ($type == 'groupment' && $hasChildren) { ?>
+                            <i class="fas fa-chevron-down toggle-children"></i>
+                            <?php } elseif ($type == 'groupment') { ?>
+                            <i class="fas fa-chevron-right chevron-empty"></i>
+                            <?php } ?>
+                        </div>
+
+                        <div class="photo-container">
+                            <?php
+                            $mediaOutput = saturne_show_medias_linked('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $obj->element_type . '/' . $obj->ref, 'small', 1, 0, 0, 0, 40, 40, 1, 0, 0, $obj->element_type . '/' . $obj->ref, $obj, 'photo', 0, 0, 0, 1, 'cursorpointer');
+                            if (strpos($mediaOutput, 'nophoto.png') !== false) {
+                                print '<svg class="nophoto-placeholder" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#f0f0f0"/><path d="M20 16a3 3 0 100 6 3 3 0 000-6z" fill="#bbb"/><path d="M14 13h3l1.5-2h3l1.5 2h3a2 2 0 012 2v10a2 2 0 01-2 2H14a2 2 0 01-2-2V15a2 2 0 012-2z" stroke="#bbb" stroke-width="1.5" fill="none"/></svg>';
+                            } else {
+                                print $mediaOutput;
+                            }
+                            ?>
+                        </div>
+
+                        <div class="ref-badge <?php echo $type ?>-badge">
+                            <a href="<?php echo dol_buildpath('/digiriskdolibarr/view/digiriskelement/digiriskelement_card.php', 1) . '?id=' . $obj->id ?>"><?php echo $obj->ref; ?></a>
+                        </div>
+                        
+                        <h3 class="title element-label"><?php echo $obj->label; ?></h3>
+                        
+                        <div class="risk-badges">
+                            <?php foreach(array(4 => 'black', 3 => 'red', 2 => 'orange', 1 => 'grey') as $scale => $colorClass) { ?>
+                            <span class="badge <?php echo $colorClass ?><?php echo (empty($counts[$scale]) ? ' empty' : '') ?>"><?php echo $counts[$scale] ?></span>
+                            <?php } ?>
+                        </div>
+
+                        <div class="actions">
+                            <?php if ($user->rights->digiriskdolibarr->digiriskelement->write && $type == 'groupment') { ?>
+                            <div class="wpeo-button button-square-40 button-secondary wpeo-tooltip-event quick-add-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewGroupment'); ?>" data-parent-id="<?php echo $obj->id ?>" data-parent-ref="<?php echo $obj->ref ?>" data-parent-label="<?php echo dol_escape_htmltag($obj->label) ?>" data-type="groupment"><strong>GP</strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                            <div class="wpeo-button button-square-40 wpeo-tooltip-event quick-add-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('NewWorkUnit'); ?>" data-parent-id="<?php echo $obj->id ?>" data-parent-ref="<?php echo $obj->ref ?>" data-parent-label="<?php echo dol_escape_htmltag($obj->label) ?>" data-type="workunit"><strong>UT</strong><span class="button-add animated fas fa-plus-circle"></span></div>
+                            <?php } ?>
+                            <?php if ($user->rights->digiriskdolibarr->digiriskelement->delete) { ?>
+                            <div class="wpeo-button button-square-40 button-red wpeo-tooltip-event delete-element-btn" data-direction="bottom" data-color="light" aria-label="<?php echo $langs->trans('Delete'); ?>" data-id="<?php echo $obj->id ?>" data-ref="<?php echo $obj->ref ?>"><i class="fas fa-trash"></i></div>
+                            <?php } ?>
+                        </div>
+                    </div>
+					<ul class="space space-<?php echo $i; ?> ui-sortable <?php echo $type ?>" id="space<?php echo $obj->id?>" value="<?php echo $i ?>"><?php display_recurse_tree_organization($element['children'], $i + 1, $riskInfos) ?></ul>
 				</li>
 			<?php }
 		}
 	} else {
 		print $langs->trans('YouDontHaveTheRightToSeeThis');
 	}
-}
-
-/**
- *  Show tab footer of a card.
- *  Note: $object->next_prev_filter can be set to restrict select to find next or previous record by $form->showrefnav.
- *
- *  @param	Object	$object			Object to show
- *  @param	string	$paramid   		Name of parameter to use to name the id into the URL next/previous link
- *  @param	string	$morehtml  		More html content to output just before the nav bar
- *  @param	int		$shownav	  	Show Condition (navigation is shown if value is 1)
- *  @param	string	$fieldid   		Nom du champ en base a utiliser pour select next et previous (we make the select max and min on this field). Use 'none' for no prev/next search.
- *  @param	string	$fieldref   	Nom du champ objet ref (object->ref) a utiliser pour select next et previous
- *  @param	string	$morehtmlref  	More html to show after ref
- *  @param	string	$moreparam  	More param to add in nav link url.
- *	@param	int		$nodbprefix		Do not include DB prefix to forge table name
- *	@param	string	$morehtmlleft	More html code to show before ref
- *	@param	string	$morehtmlstatus	More html code to show under navigation arrows
- *  @param  int     $onlybanner     Put this to 1, if the card will contains only a banner (this add css 'arearefnobottom' on div)
- *	@param	string	$morehtmlright	More html code to show before navigation arrows
- *  @return	void
- */
-function digirisk_banner_tab($object, $paramid, $morehtml = '', $shownav = 1, $fieldid = 'rowid', $fieldref = 'ref', $morehtmlref = '', $moreparam = '', $nodbprefix = 0, $morehtmlleft = '', $morehtmlstatus = '', $onlybanner = 0, $morehtmlright = '')
-{
-	global $form;
-
-	print '<div class="' . ($onlybanner ? 'arearefnobottom ' : 'arearef ') . 'heightref valignmiddle centpercent">';
-	print $form->showrefnav($object, $paramid, $morehtml, $shownav, $fieldid, $fieldref, $morehtmlref, $moreparam, $nodbprefix, $morehtmlleft, $morehtmlstatus, $morehtmlright);
-	print '</div>';
-	print '<div class="underbanner clearboth"></div>';
 }
 
 /**
@@ -1210,6 +687,36 @@ function getNomUrlUser(User $object, $withpictoimg = 0, $option = '', $infologin
 }
 
 /**
+ * Return a ticket reference as a clickable getNomUrl link for the public ticket interface.
+ *
+ * The public pages are NOLOGIN, so $user is never loaded from the session. We detect an active
+ * back-office session through $_SESSION['dol_login'] and only render a link when that user is
+ * connected and holds the ticket read permission, otherwise we keep the bold reference.
+ *
+ * @param  Ticket $ticket Ticket object, already fetched
+ * @return string         getNomUrl link if connected with read access, '<b>ref</b>' otherwise
+ */
+function getNomUrlTicketPublic(Ticket $ticket): string
+{
+	global $db;
+
+	$display = '<b>' . $ticket->ref . '</b>';
+	if (!empty($_SESSION['dol_login'])) {
+		$connectedUser = new User($db);
+		if ($connectedUser->fetch(0, $_SESSION['dol_login']) > 0) {
+			// fetch() does not populate rights, so hasRight() would always return 0 without this
+			$connectedUser->loadRights('ticket');
+			if ($connectedUser->hasRight('ticket', 'read')) {
+				// Tooltip disabled: the public interface does not load Dolibarr tooltip CSS/JS
+				$display = $ticket->getNomUrl(1, '', 1);
+			}
+		}
+	}
+
+	return $display;
+}
+
+/**
  *	Show category image
  *
 * @param object	$object
@@ -1282,76 +789,6 @@ function show_category_image($object, $upload_dir, $noprint = 0)
 
 	if ($noprint) {
 		return $out;
-	}
-}
-
-/**
-* Show header for public page signature
-*
-* @param  string $title       Title
-* @param  string $head        Head array
-* @param  int    $disablejs   More content into html header
-* @param  int    $disablehead More content into html header
-* @param  array  $arrayofjs   Array of complementary js files
-* @param  array  $arrayofcss  Array of complementary css files
-* @return void
-*/
-function llxHeaderSignature($title, $head = "", $disablejs = 0, $disablehead = 0, $arrayofjs = array(), $arrayofcss = array())
-{
-	global $conf, $mysoc;
-
-	top_htmlhead($head, $title, $disablejs, $disablehead, $arrayofjs, $arrayofcss, 0, 1); // Show html headers
-
-	if ( ! empty($conf->global->DIGIRISKDOLIBARR_SIGNATURE_SHOW_COMPANY_LOGO)) {
-		// Define logo and logosmall
-		$logosmall = $mysoc->logo_small;
-		$logo      = $mysoc->logo;
-		// Define urllogo
-		$urllogo = '';
-		if ( ! empty($logosmall) && is_readable($conf->mycompany->dir_output . '/logos/thumbs/' . $logosmall)) {
-			$urllogo = DOL_URL_ROOT . '/viewimage.php?modulepart=mycompany&amp;entity=' . $conf->entity . '&amp;file=' . urlencode('logos/thumbs/' . $logosmall);
-		} elseif ( ! empty($logo) && is_readable($conf->mycompany->dir_output . '/logos/' . $logo)) {
-			$urllogo = DOL_URL_ROOT . '/viewimage.php?modulepart=mycompany&amp;entity=' . $conf->entity . '&amp;file=' . urlencode('logos/' . $logo);
-		}
-		// Output html code for logo
-		if ($urllogo) {
-			print '<div class="center signature-logo">';
-			print '<img src="' . $urllogo . '">';
-			print '</div>';
-		}
-		print '<div class="underbanner clearboth"></div>';
-	}
-}
-
-/**
-* Show header for public page ticket
-*
-* @param  string $title       Title
-* @param  string $head        Head array
-* @param  int    $disablejs   More content into html header
-* @param  int    $disablehead More content into html header
-* @param  array  $arrayofjs   Array of complementary js files
-* @param  array  $arrayofcss  Array of complementary css files
-* @return void
-*/
-function llxHeaderTicketDigirisk($title, $head = "", $disablejs = 0, $disablehead = 0,$arrayofjs = array(), $arrayofcss = array())
-{
-	global $conf, $mysoc;
-
-	require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
-
-	top_htmlhead($head, $title, $disablejs, $disablehead, $arrayofjs, $arrayofcss, 0, 1); // Show html headers
-
-	if (!empty($conf->global->DIGIRISKDOLIBARR_TICKET_SHOW_COMPANY_LOGO)) {
-		$urllogo = DOL_URL_ROOT . '/viewimage.php?modulepart=mycompany&entity=' . $conf->entity . '&file=' . urlencode('/logos/thumbs/'.$mysoc->logo_small);
-
-		// Output html code for logo
-		if ($urllogo) {
-			print '<div class="center signature-logo">';
-			print '<img src="' . $urllogo . '">';
-			print '</div>';
-		}
-		print '<div class="underbanner clearboth"></div>';
 	}
 }
 
@@ -2245,91 +1682,6 @@ function getNomUrlSociety($thirdparty, $withpicto = 0, $option = '', $maxlen = 0
 }
 
 /**
- * 	Return list of activated modules usable for document generation
- *
- * 	@param	DoliDB		$db				    Database handler
- * 	@param	string		$type			    Type of models (company, invoice, ...)
- *  @param  int		    $maxfilenamelength  Max length of value to show
- * 	@return	array|int			    		0 if no module is activated, or array(key=>label). For modules that need directory scan, key is completed with ":filename".
- */
-function getListOfModelsDigirisk($db, $type, $maxfilenamelength = 0)
-{
-    global $conf, $langs;
-    $liste = array();
-    $found = 0;
-    $dirtoscan = '';
-
-    $sql = "SELECT nom as id, nom as doc_template_name, libelle as label, description as description";
-    $sql .= " FROM ".MAIN_DB_PREFIX."document_model";
-    $sql .= " WHERE type = '".$db->escape($type)."'";
-    $sql .= " AND entity IN (0,".$conf->entity.")";
-    $sql .= " ORDER BY description DESC";
-
-    dol_syslog('/core/lib/function2.lib.php::getListOfModels', LOG_DEBUG);
-    $resql = $db->query($sql);
-    if ($resql) {
-        $num = $db->num_rows($resql);
-        $i = 0;
-        while ($i < $num) {
-            $found = 1;
-
-            $obj = $db->fetch_object($resql);
-
-            // If this generation module needs to scan a directory, then description field is filled
-            // with the constant that contains list of directories to scan (COMPANY_ADDON_PDF_ODT_PATH, ...).
-            if (!empty($obj->description)) {	// A list of directories to scan is defined
-                include_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
-
-                $const = $obj->description;
-                //irtoscan.=($dirtoscan?',':'').preg_replace('/[\r\n]+/',',',trim($conf->global->$const));
-                $dirtoscan = preg_replace('/[\r\n]+/', ',', trim($conf->global->$const));
-
-                $listoffiles = array();
-
-                // Now we add models found in directories scanned
-                $listofdir = explode(',', $dirtoscan);
-                foreach ($listofdir as $key => $tmpdir) {
-                    $tmpdir = trim($tmpdir);
-                    $tmpdir = preg_replace('/DOL_DATA_ROOT/', DOL_DATA_ROOT, $tmpdir);
-                    $tmpdir = preg_replace('/DOL_DOCUMENT_ROOT/', DOL_DOCUMENT_ROOT, $tmpdir);
-                    if (!$tmpdir) {
-                        unset($listofdir[$key]);
-                        continue;
-                    }
-                    if (is_dir($tmpdir)) {
-                        // all type of template is allowed
-                        $tmpfiles = dol_dir_list($tmpdir, 'files', 0, '', '', 'name', SORT_ASC, 0);
-                        if (count($tmpfiles)) {
-                            $listoffiles = array_merge($listoffiles, $tmpfiles);
-                        }
-                    }
-                }
-
-                if (count($listoffiles)) {
-                    foreach ($listoffiles as $record) {
-                        $liste[$obj->id.':'.$record['fullname']] = $record['name'];
-                    }
-                } else {
-                    $liste[0] = $obj->label.': '.$langs->trans("None");
-                }
-            } else {
-                $liste[$obj->id] = $obj->label ?: $obj->doc_template_name;
-            }
-            $i++;
-        }
-    } else {
-        dol_print_error($db);
-        return -1;
-    }
-
-    if ($found) {
-        return $liste;
-    } else {
-        return 0;
-    }
-}
-
-/**
  * 	Return clickable name (with picto eventually)
  *
  * 	@param	int		$withpicto		          0=No picto, 1=Include picto into link, 2=Only picto
@@ -2385,13 +1737,15 @@ function getNomUrlEntity($object, $withpicto = 0, $option = '', $addlabel = 0, $
 		$linkstart  = '<a href="' . $url . '"';
 		$linkstart .= $linkclose . '>';
 		$linkend    = '</a>';
+	    $result    .= $linkstart;
 	}
 
-	$result                      .= $linkstart;
 	if ($withpicto) $result      .= '<i class="fas fa-building"></i>' . ' ';
 	if ($withpicto != 2) $result .= 'S' . $object->entity;
 	if ($withpicto != 2) $result .= (($addlabel && dolibarr_get_const($db, 'MAIN_INFO_SOCIETE_NOM', $object->entity)) ? $sep . dol_trunc(dolibarr_get_const($db, 'MAIN_INFO_SOCIETE_NOM', $object->entity), ($addlabel > 1 ? $addlabel : 0)) : '');
-	$result                      .= $linkend;
+    if (isset($linked)) {
+        $result .= $linkend;
+    }
 
 	global $action;
 	$hookmanager->initHooks(array('entitydao'));
@@ -2841,6 +2195,7 @@ function load_board($user, $cat, $digiriskelement)
 	if ($allObjects > 0) {
 		$response = new WorkboardResponse();
 		$response->id = $cat['id'];
+		$response->color = $cat['color'];
 		$response->img = $cat['photo'];
 		$response->label = $cat['name'] . ' : ';
 		$response->url = DOL_URL_ROOT . '/ticket/list.php?search_options_digiriskdolibarr_ticket_service='.$digiriskelement->id.'&search_category_ticket_list='.$cat['id'];
@@ -2903,95 +2258,6 @@ function fetchDictionnary($tablename)
 		return $records;
 	} else {
 		return -1;
-	}
-}
-
-/**
- *	Delete an optional attribute
- *
- *	@param	string	$attrname		Code of attribute to delete
- *  @param  string	$elementtype    Element type ('member', 'product', 'thirdparty', 'contact', ...)
- *  @return int              		< 0 if KO, 0 if nothing is done, 1 if OK
- */
-function extrafield_soft_delete($attrname, $elementtype = 'member', $extrafields)
-{
-	if ($elementtype == 'thirdparty') {
-		$elementtype = 'societe';
-	}
-	if ($elementtype == 'contact') {
-		$elementtype = 'socpeople';
-	}
-
-	$error = 0;
-
-	if (!empty($attrname) && preg_match("/^\w[a-zA-Z0-9-_]*$/", $attrname)) {
-		$result = extrafields_delete_label($attrname, $elementtype, $extrafields);
-		if ($result < 0) {
-			$extrafields->error = $extrafields->db->lasterror();
-			$extrafields->errors[] = $extrafields->db->lasterror();
-			$error++;
-		}
-
-		if (!$error) {
-			$sql = "SELECT COUNT(rowid) as nb";
-			$sql .= " FROM ".MAIN_DB_PREFIX."extrafields";
-			$sql .= " WHERE elementtype = '".$extrafields->db->escape($elementtype)."'";
-			$sql .= " AND name = '".$extrafields->db->escape($attrname)."'";
-			//$sql.= " AND entity IN (0,".$conf->entity.")";      Do not test on entity here. We want to see if there is still on field remaning in other entities before deleting field in table
-			$resql = $extrafields->db->query($sql);
-			if ($resql) {
-				$obj = $extrafields->db->fetch_object($resql);
-				if ($obj->nb <= 0) {
-//					$result = $extrafields->db->DDLDropField(MAIN_DB_PREFIX.$table, $attrname); // This also drop the unique key
-					if ($result < 0) {
-						$extrafields->error = $extrafields->db->lasterror();
-						$extrafields->errors[] = $extrafields->db->lasterror();
-					}
-				}
-			}
-		}
-
-		return $result;
-	} else {
-		return 0;
-	}
-}
-
-// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
-/**
- *	Delete description of an optional attribute
- *
- *	@param	string	$attrname			Code of attribute to delete
- *  @param  string	$elementtype        Element type ('member', 'product', 'thirdparty', ...)
- *  @return int              			< 0 if KO, 0 if nothing is done, 1 if OK
- */
-function extrafields_delete_label($attrname, $elementtype = 'member', $extrafields)
-{
-	global $conf;
-
-	if ($elementtype == 'thirdparty') {
-		$elementtype = 'societe';
-	}
-	if ($elementtype == 'contact') {
-		$elementtype = 'socpeople';
-	}
-
-	if (isset($attrname) && $attrname != '' && preg_match("/^\w[a-zA-Z0-9-_]*$/", $attrname)) {
-		$sql = "DELETE FROM ".MAIN_DB_PREFIX."extrafields";
-		$sql .= " WHERE name = '".$extrafields->db->escape($attrname)."'";
-		$sql .= " AND entity IN  (0,".$conf->entity.')';
-		$sql .= " AND elementtype = '".$extrafields->db->escape($elementtype)."'";
-
-		dol_syslog(get_class($extrafields)."::delete_label", LOG_DEBUG);
-		$resql = $extrafields->db->query($sql);
-		if ($resql) {
-			return 1;
-		} else {
-			dol_print_error($extrafields->db);
-			return -1;
-		}
-	} else {
-		return 0;
 	}
 }
 
@@ -3240,7 +2506,7 @@ function digiriskformconfirm($page, $title, $question, $action, $formquestion = 
 					$more .= '</div></div>'."\n";
 				} elseif ($input['type'] == 'checkbox') {
 					$more .= '<div class="tagtr">';
-					$more .= '<div class="tagtd'.(empty($input['tdclass']) ? '' : (' '.$input['tdclass'])).'">'.$input['label'].' </div><div class="tagtd">';
+					$more .= '<div class="tagtd'.(empty($input['tdclass']) ? '' : (' '.$input['tdclass'])).'">'.(empty($input['label']) ? '' : $input['label']).' </div><div class="tagtd">';
 					$more .= '<input type="checkbox" class="flat'.$morecss.'" id="'.dol_escape_htmltag($input['name']).'" name="'.dol_escape_htmltag($input['name']).'"'.$moreattr;
 					if (!is_bool($input['value']) && $input['value'] != 'false' && $input['value'] != '0' && $input['value'] != '') {
 						$more .= ' checked';

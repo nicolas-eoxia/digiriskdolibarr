@@ -4,15 +4,12 @@
 <div class="risk-evaluation-container risk-evaluation-container-<?php echo $lastEvaluation->id ?>" value="<?php echo $risk->id ?>">
 	<div class="risk-evaluation-single-content risk-evaluation-single-content-<?php echo $risk->id ?>">
 		<div class="risk-evaluation-single risk-evaluation-single-<?php echo $risk->id ?>">
-			<div class="risk-evaluation-cotation risk-evaluation-list modal-open" value="<?php echo $risk->id ?>" data-scale="<?php echo $lastEvaluation->get_evaluation_scale() ?>">
-				<span><?php echo $lastEvaluation->cotation ?: 0; ?></span>
+			<div class="risk-evaluation-cotation risk-evaluation-list modal-open" value="<?php echo $risk->id ?>" data-scale="<?php echo $lastEvaluation->getEvaluationScale() ?>">
+				<span><?php echo ($lastEvaluation->method == 'standard' ? $defaultCotation[$lastEvaluation->cotation] ?: 0 : $lastEvaluation->cotation); ?></span>
 			</div>
-			<div class="risk-evaluation-photo risk-evaluation-photo-<?php echo $lastEvaluation->id > 0 ? $lastEvaluation->id : 0 ; echo $risk->id > 0 ? ' risk-' . $risk->id : ' risk-new' ?> open-medias-linked" value="<?php echo $lastEvaluation->id ?>">
+			<div class="photo riskassessment-photo-<?php echo $lastEvaluation->id; ?>" style="margin:auto">
 				<?php
-				$riskAssessment = $lastEvaluation;
-				$view = 1;
-				include DOL_DOCUMENT_ROOT . '/custom/digiriskdolibarr/core/tpl/medias/digiriskdolibarr_photo_view.tpl.php';
-				$view = 0;
+				print saturne_show_medias_linked('digiriskdolibarr', DOL_DATA_ROOT . '/' . ($lastEvaluation->entity > 1 ? $lastEvaluation->entity . '/' : '') . 'digiriskdolibarr/riskassessment/' . $lastEvaluation->ref, 'small', 1, 0, 0, 0, 50, 50, 0, 0, 1, '/riskassessment/' . $lastEvaluation->ref, $lastEvaluation, 'photo', 0, 0, 0, 1);
 				?>
 			</div>
 			<div class="risk-evaluation-content">
@@ -27,7 +24,7 @@
 						echo getNomUrlUser($userAuthor); ?>
 					</span>
 				</div>
-				<div class="risk-evaluation-comment">
+				<div class="risk-evaluation-comment wordbreak">
 					<?php print nl2br(dol_trunc($lastEvaluation->comment, 120)); ?>
 				</div>
 			</div>
@@ -35,6 +32,7 @@
 			<?php if ($contextpage != 'sharedrisk' && $contextpage != 'inheritedrisk') : ?>
 				<?php if ($permissiontoadd) : ?>
 					<div class="risk-evaluation-edit risk-evaluation-button wpeo-button button-square-40 button-transparent wpeo-tooltip-event modal-open" aria-label="<?php echo $langs->trans('EditRiskAssessment') ?>" value="<?php echo $lastEvaluation->id;?>">
+						<input type="hidden" class="modal-options" data-modal-to-open="risk_evaluation_edit<?php echo $lastEvaluation->id ?>" data-from-id="<?php echo $lastEvaluation->id ?>"/>
 						<i class="fas fa-pencil-alt button-icon"></i>
 					</div>
 				<?php endif; ?>

@@ -1,5 +1,6 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+
+/* Copyright (C) 2021-2026 EVARISK <technique@evarisk.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,9 +17,9 @@
  */
 
 /**
- * \file        class/accident.class.php
- * \ingroup     digiriskdolibarr
- * \brief       This file is a class file for Accident
+ * \file    class/accident.class.php
+ * \ingroup digiriskdolibarr
+ * \brief   This file is a class file for Accident
  */
 
 require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
@@ -26,128 +27,120 @@ require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
 require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 
+require_once __DIR__ . '/../../saturne/class/saturneobject.class.php';
+require_once __DIR__ . '/../../saturne/class/saturnesignature.class.php';
+
 require_once __DIR__ . '/../lib/digiriskdolibarr_function.lib.php';
 require_once __DIR__ . '/digiriskdocuments.class.php';
-require_once __DIR__ . '/digirisksignature.class.php';
-require_once __DIR__ . '/openinghours.class.php';
+require_once __DIR__ . '/digiriskdolibarrdashboard.class.php';
 require_once __DIR__ . '/evaluator.class.php';
-require_once __DIR__ . '/dashboarddigiriskstats.class.php';
+require_once __DIR__ . '/../core/modules/digiriskdolibarr/digiriskelement/accidentlesion/mod_accidentlesion_standard.php';
 
 /**
  * Class for Accident
  */
-class Accident extends CommonObject
+class Accident extends SaturneObject
 {
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
+    /**
+     * @var string Module name
+     */
+    public $module = 'digiriskdolibarr';
+
+    /**
+     * @var string Element type of object
+     */
+    public $element = 'accident';
+
+    /**
+     * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management
+     */
+    public $table_element = 'digiriskdolibarr_accident';
+
+    /**
+     * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management
+     */
+    public $table_element_line = 'digiriskdolibarr_accidentdet';
+
+    /**
+     * @var string Name of icon for accident
+     * Must be a 'fa-xxx' fontawesome code (or 'fa-xxx_fa_color_size')
+     * or 'accident@digiriskdolibarr' if picto is file 'img/object_accident.png'
+     */
+    public string $picto = 'fontawesome_fa-user-injured_fas_#d35968';
+
+	const STATUS_DELETED   = -1;
+	const STATUS_DRAFT     = 0;
+	const STATUS_VALIDATED = 1;
+	const STATUS_LOCKED    = 2;
+	const STATUS_ARCHIVED  = 3;
 
 	/**
-	 * @var string Error string
-	 * @see        $errors
+	 * 'type' field format:
+	 *      'integer', 'integer:ObjectClass:PathToClass[:AddCreateButtonOrNot[:Filter[:Sortfield]]]',
+	 *      'select' (list of values are in 'options'),
+	 *      'sellist:TableName:LabelFieldName[:KeyFieldName[:KeyFieldParent[:Filter[:Sortfield]]]]',
+	 *      'chkbxlst:...',
+	 *      'varchar(x)',
+	 *      'text', 'text:none', 'html',
+	 *      'double(24,8)', 'real', 'price',
+	 *      'date', 'datetime', 'timestamp', 'duration',
+	 *      'boolean', 'checkbox', 'radio', 'array',
+	 *      'mail', 'phone', 'url', 'password', 'ip'
+	 *      Note: Filter can be a string like "(t.ref:like:'SO-%') or (t.date_creation:<:'20160101') or (t.nature:is:NULL)"
+	 * 'label' the translation key.
+	 * 'picto' is code of a picto to show before value in forms
+	 * 'enabled' is a condition when the field must be managed (Example: 1 or '$conf->global->MY_SETUP_PARAM' or '!empty($conf->multicurrency->enabled)' ...)
+	 * 'position' is the sort order of field.
+	 * 'notnull' is set to 1 if not null in database. Set to -1 if we must set data to null if empty '' or 0.
+	 * 'visible' says if field is visible in list (Examples: 0=Not visible, 1=Visible on list and create/update/view forms, 2=Visible on list only, 3=Visible on create/update/view form only (not list), 4=Visible on list and update/view form only (not create). 5=Visible on list and view only (not create/not update). Using a negative value means field is not shown by default on list but can be selected for viewing)
+	 * 'noteditable' says if field is not editable (1 or 0)
+	 * 'default' is a default value for creation (can still be overwroted by the Setup of Default Values if field is editable in creation form). Note: If default is set to '(PROV)' and field is 'ref', the default value will be set to '(PROVid)' where id is rowid when a new record is created.
+	 * 'index' if we want an index in database.
+	 * 'foreignkey'=>'tablename.field' if the field is a foreign key (it is recommanded to name the field fk_...).
+	 * 'searchall' is 1 if we want to search in this field when making a search from the quick search button.
+	 * 'isameasure' must be set to 1 or 2 if field can be used for measure. Field type must be summable like integer or double(24,8). Use 1 in most cases, or 2 if you don't want to see the column total into list (for example for percentage)
+	 * 'css' and 'cssview' and 'csslist' is the CSS style to use on field. 'css' is used in creation and update. 'cssview' is used in view mode. 'csslist' is used for columns in lists. For example: 'css'=>'minwidth300 maxwidth500 widthcentpercentminusx', 'cssview'=>'wordbreak', 'csslist'=>'tdoverflowmax200'
+	 * 'help' is a 'TranslationString' to use to show a tooltip on field. You can also use 'TranslationString:keyfortooltiponlick' for a tooltip on click.
+	 * 'showoncombobox' if value of the field must be visible into the label of the combobox that list record
+	 * 'disabled' is 1 if we want to have the field locked by a 'disabled' attribute. In most cases, this is never set into the definition of $fields into class, but is set dynamically by some part of code.
+	 * 'arrayofkeyval' to set a list of values if type is a list of predefined values. For example: array("0"=>"Draft","1"=>"Active","-1"=>"Cancel"). Note that type can be 'integer' or 'varchar'
+	 * 'autofocusoncreate' to have field having the focus on a create form. Only 1 field should have this property set to 1.
+	 * 'comment' is not used. You can store here any text of your choice. It is not used by application.
+	 * 'validate' is 1 if you need to validate with $this->validateField()
+	 * 'copytoclipboard' is 1 or 2 to allow to add a picto to copy value into clipboard (1=picto after label, 2=picto after value)
+	 * 'size' limit the length of a fields
+	 *
+	 * Note: To have value dynamic, you can set value to 0 in definition and edit the value on the fly into the constructor.
 	 */
-	public $error;
-
-	/**
-	 * @var string[] Array of error strings
-	 */
-	public $errors = array();
-
-	/**
-	 * @var array Result array.
-	 */
-	public $result = array();
-
-	/**
-	 * @var int The object identifier
-	 */
-	public $id;
-
-	/**
-	 * @var AccidentWorkStop[]     Array of subtable lines
-	 */
-	public $lines = array();
-
-	/**
-	 * @var string ID to identify managed object.
-	 */
-	public $element = 'accident';
-
-	/**
-	 * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management.
-	 */
-	public $table_element = 'digiriskdolibarr_accident';
-
-	/**
-	 * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management.
-	 */
-	public $table_element_line = 'digiriskdolibarr_accidentdet';
-
-	/**
-	 * @var int  Does this object support multicompany module ?
-	 * 0=No test on entity, 1=Test with field entity, 'field@table'=Test with link by field@table
-	 */
-	public $ismultientitymanaged = 1;
-
-	/**
-	 * @var int  Does object support extrafields ? 0=No, 1=Yes
-	 */
-	public $isextrafieldmanaged = 1;
-
-	/**
-	 * @var string String with name of icon for digiriskelement. Must be the part after the 'object_' into object_digiriskelement.png
-	 */
-	public $picto = 'accident@digiriskdolibarr';
-
-	/**
-	 * @var string Label status of const.
-	 */
-	public $labelStatus;
-
-	/**
-	 * @var string Label status short of const.
-	 */
-	public $labelStatusShort;
-
-	const STATUS_IN_PROGRESS = 1;
-	const STATUS_PENDING_SIGNATURE = 2;
 
 	/**
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
 	 */
-	public $fields = array(
-		'rowid'              => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => '1', 'position' => 1, 'notnull' => 1, 'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"),
-		'ref'                => array('type' => 'varchar(128)', 'label' => 'Ref', 'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => 1, 'noteditable' => '1', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"),
-		'ref_ext'            => array('type' => 'varchar(128)', 'label' => 'RefExt', 'enabled' => '1', 'position' => 20, 'notnull' => 0, 'visible' => 0,),
-		'entity'             => array('type' => 'integer', 'label' => 'Entity', 'enabled' => '1', 'position' => 30, 'notnull' => 1, 'visible' => 0,),
-		'date_creation'      => array('type' => 'datetime', 'label' => 'DateCreation', 'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => 0,),
-		'tms'                => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 50, 'notnull' => 0, 'visible' => 0,),
-		'status'             => array('type' => 'smallint', 'label' => 'Status', 'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => 2, 'index' => 0,),
-		'label'              => array('type' => 'varchar(255)', 'label' => 'Label', 'enabled' => '1', 'position' => 80, 'notnull' => 0, 'visible' => 1, 'searchall' => 1, 'css' => 'minwidth200', 'help' => "Help text", 'showoncombobox' => '1',),
-		'fk_user_victim'     => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserVictim', 'enabled' => '1', 'position' => 81, 'notnull' => -1, 'visible' => 1,),
-		'fk_user_employer'   => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserEmployer', 'enabled' => '1', 'position' => 82, 'notnull' => -1, 'visible' => 1,),
-		'accident_type'      => array('type' => 'text', 'label' => 'AccidentType', 'enabled' => '1', 'position' => 90, 'notnull' => -1, 'visible' => 1, 'css' => 'minwidth150',),
-		'fk_element'         => array('type' => 'integer', 'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 91, 'notnull' => -1, 'visible' => 1,'css' => 'minwidth150',),
-		'fk_standard'        => array('type' => 'integer', 'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 94, 'notnull' => -1, 'visible' => 0,'css' => 'minwidth150',),
-		'fk_soc'             => array('type' => 'integer', 'label' => 'ExtSociety', 'enabled' => '1', 'position' => 95, 'notnull' => -1, 'visible' => 3,),
-		'accident_location'  => array('type' => 'text', 'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 96, 'notnull' => -1, 'visible' => 3, 'css' => 'minwidth150',),
-		'accident_date'      => array('type' => 'datetime', 'label' => 'AccidentDate', 'enabled' => '1', 'position' => 100, 'notnull' => -1, 'visible' => 1, 'css' => 'minwidth150',),
-		'description'        => array('type' => 'text', 'label' => 'Description', 'enabled' => '1', 'position' => 110, 'notnull' => -1, 'visible' => 1,),
-		'photo'              => array('type' => 'text', 'label' => 'Photo', 'enabled' => '1', 'position' => 120, 'notnull' => -1, 'visible' => 3,),
-		'external_accident'  => array('type' => 'smallint', 'label' => 'ExternalAccident', 'enabled' => '1', 'position' => 130, 'notnull' => -1, 'visible' => 3, 'arrayofkeyval' => array('1' => 'No', '2' => 'Yes', '3' => 'Other'),),
-		'fk_project'         => array('type' => 'integer', 'label' => 'FKProject', 'enabled' => '1', 'position' => 140, 'notnull' => 1, 'visible' => 0,),
-		'fk_user_creat'      => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserAuthor', 'enabled' => '1', 'position' => 150, 'notnull' => 1, 'visible' => 0, 'foreignkey' => 'user.rowid',),
-		'fk_user_modif'      => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif', 'enabled' => '1', 'position' => 160, 'notnull' => -1, 'visible' => 0,),
-	);
+	public $fields = [
+		'rowid'             => ['type' => 'integer',      'label' => 'TechnicalID',      'enabled' => '1', 'position' => 1,  'notnull' => 1, 'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"],
+		'ref'               => ['type' => 'varchar(128)', 'label' => 'Ref',              'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => 1, 'noteditable' => '1', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"],
+		'ref_ext'           => ['type' => 'varchar(128)', 'label' => 'RefExt',           'enabled' => '1', 'position' => 20, 'notnull' => 0, 'visible' => 0,],
+		'entity'            => ['type' => 'integer',      'label' => 'Entity',           'enabled' => '1', 'position' => 30, 'notnull' => 1, 'visible' => 0,],
+		'date_creation'     => ['type' => 'datetime',     'label' => 'DateCreation',     'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => 2,],
+		'tms'               => ['type' => 'timestamp',    'label' => 'DateModification', 'enabled' => '1', 'position' => 50, 'notnull' => 0, 'visible' => 0,],
+		'status'            => ['type' => 'smallint',     'label' => 'Status',           'enabled' => '1', 'position' => 70, 'notnull' => 1, 'visible' => 2, 'index' => 0, 'arrayofkeyval' => [0 => 'StatusDraft', 1 => 'Validated', 2 => 'Locked', 3 => 'Archived']],
+		'label'             => ['type' => 'varchar(255)', 'label' => 'Label',            'enabled' => '1', 'position' => 80, 'notnull' => 0, 'visible' => 1, 'searchall' => 1, 'css' => 'minwidth200', 'help' => "Help text", 'showoncombobox' => '1',],
+		'fk_user_employer'  => ['type' => 'integer:User:user/class/user.class.php', 'label' => 'UserEmployer', 'enabled' => '1', 'position' => 82, 'notnull' => -1, 'visible' => 1,],
+		'accident_type'     => ['type' => 'text',         'label' => 'AccidentType',     'enabled' => '1', 'position' => 90, 'notnull' => -1, 'visible' => 1,  'css' => 'minwidth150', 'arrayofkeyval' => [0 => 'WorkAccidentStatement', 1 => 'CommutingAccident']],
+		'fk_element'        => ['type' => 'integer',      'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 91, 'notnull' => -1, 'visible' => 1,  'css' => 'minwidth150',],
+		'fk_standard'       => ['type' => 'integer',      'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 94, 'notnull' => -1, 'visible' => 0,  'css' => 'minwidth150',],
+		'fk_soc'            => ['type' => 'integer',      'label' => 'ExtSociety',       'enabled' => '1', 'position' => 95, 'notnull' => -1, 'visible' => 3,],
+		'accident_location' => ['type' => 'text',         'label' => 'AccidentLocation', 'enabled' => '1', 'position' => 96, 'notnull' => -1, 'visible' => 3,  'css' => 'minwidth150',],
+		'accident_date'     => ['type' => 'datetime',     'label' => 'AccidentDate',     'enabled' => '1', 'position' => 100, 'notnull' => -1, 'visible' => 1, 'css' => 'minwidth150',],
+		'description'       => ['type' => 'text',         'label' => 'Description',      'enabled' => '1', 'position' => 110, 'notnull' => -1, 'visible' => 1,],
+		'photo'             => ['type' => 'text',         'label' => 'Photo',            'enabled' => '1', 'position' => 120, 'notnull' => -1, 'visible' => 3,],
+		'external_accident' => ['type' => 'smallint',     'label' => 'ExternalAccident', 'enabled' => '1', 'position' => 130, 'notnull' => -1, 'visible' => 3, 'arrayofkeyval' => ['1' => 'No', '2' => 'Yes', '3' => 'Other'],],
+		'fk_project'        => ['type' => 'integer',      'label' => 'FKProject',        'enabled' => '1', 'position' => 140, 'notnull' => 1, 'visible' => 0,],
+        'fk_ticket'         => ['type' => 'integer:Ticket:ticket/class/ticket.class.php', 'label' => 'FkTicket',  'enabled' => '1', 'position' => 145, 'notnull' => -1, 'visible' => 1,],
+        'fk_user_creat'     => ['type' => 'integer:User:user/class/user.class.php', 'label' => 'UserAuthor', 'enabled' => '1', 'position' => 150, 'notnull' => 1,  'visible' => 0, 'foreignkey' => 'user.rowid',],
+        'fk_user_modif'     => ['type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif',  'enabled' => '1', 'position' => 160, 'notnull' => -1, 'visible' => 0,],
+	];
 
-	public $rowid;
-	public $ref;
-	public $ref_ext;
-	public $entity;
-	public $date_creation;
-	public $tms;
-	public $status;
 	public $label;
 	public $accident_date;
 	public $description;
@@ -158,917 +151,1005 @@ class Accident extends CommonObject
 	public $fk_user_creat;
 	public $fk_user_modif;
 	public $fk_element;
-	public $fk_standard;
+    public $fk_standard;
+    public $fk_ticket;
 	public $fk_soc;
-	public $fk_user_victim;
 	public $fk_user_employer;
 
-	/**
-	 * Constructor
-	 *
-	 * @param DoliDb $db Database handler
-	 */
-	public function __construct(DoliDB $db)
-	{
-		global $conf, $langs;
-
-		$this->db = $db;
-
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
-
-		// Unset fields that are disabled
-		foreach ($this->fields as $key => $val) {
-			if (isset($val['enabled']) && empty($val['enabled'])) {
-				unset($this->fields[$key]);
-			}
-		}
-
-		// Translate some data of arrayofkeyval
-		if (is_object($langs)) {
-			foreach ($this->fields as $key => $val) {
-				if (is_array($val['arrayofkeyval'])) {
-					foreach ($val['arrayofkeyval'] as $key2 => $val2) {
-						$this->fields[$key]['arrayofkeyval'][$key2] = $langs->trans($val2);
-					}
-				}
-			}
-		}
-	}
+    /**
+     * Constructor
+     *
+     * @param DoliDB $db Database handler
+     */
+    public function __construct(DoliDB $db)
+    {
+        //Transform fk_user_victim into victim signatory for every accidents (backward compatibility)
+        if (!getDolGlobalInt('DIGIRISKDOLIBARR_ACCIDENT_REMOVE_FK_USER_VICTIM')) {
+            $this->fields['fk_user_victim'] = ['type' => 'integer:User:user/class/user.class.php', 'label' => 'UserVictim',   'enabled' => '1', 'position' => 81, 'notnull' => -1, 'visible' => 1,];
+        }
+        return parent::__construct($db, $this->module, $this->element);
+    }
 
 
 	/**
-	 * Create object into database
+	 * Clone an object into another one.
 	 *
-	 * @param  User $user      User that creates
-	 * @param  bool $notrigger false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, Id of created object if OK
-	 */
-	public function create(User $user, $notrigger = false)
-	{
-		global $conf;
-
-		$this->element = $this->element . '@digiriskdolibarr';
-		return $this->createCommon($user, $notrigger || !$conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_CREATE);
-	}
-
-	/**
-	 * Load object in memory from the database
-	 *
-	 * @param int    $id   Id object
-	 * @param string $ref  Ref
-	 * @return int         <0 if KO, 0 if not found, >0 if OK
-	 */
-	public function fetch($id, $ref = null)
-	{
-		return $this->fetchCommon($id, $ref);
-	}
-
-	/**
-	 * Load object in memory from the database
-	 *
-	 * @param int $parent_id Id parent object
-	 * @return array|int         <0 if KO, 0 if not found, >0 if OK
+	 * @param  User      $user    User that creates
+	 * @param  int       $fromID  ID of object to clone.
+     * @param  array     $options Options array.
+	 * @return int                New object created, <0 if KO.
 	 * @throws Exception
 	 */
-	public function fetchFromParent($parent_id)
-	{
-		$filter = array('customsql' => 'fk_element=' . $this->db->escape($parent_id));
-		return $this->fetchAll('', '', 0, 0, $filter, 'AND');
-	}
-
-	/**
-	 * Load object lines in memory from the database
-	 *
-	 * @return int         <0 if KO, 0 if not found, >0 if OK
-	 */
-	public function fetchLines()
-	{
-		$this->lines = array();
-		return $this->fetchLinesCommon();
-	}
-
-	/**
-	 * Load list of objects in memory from the database.
-	 *
-	 * @param string $sortorder Sort Order
-	 * @param string $sortfield Sort field
-	 * @param int $limit limit
-	 * @param int $offset Offset
-	 * @param array $filter Filter array. Example array('field'=>'valueforlike', 'customurl'=>...)
-	 * @param string $filtermode Filter mode (AND or OR)
-	 * @return array|int                 int <0 if KO, array of pages if OK
-	 * @throws Exception
-	 */
-	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
+	public function createFromClone(User $user, int $fromID, array $options): int
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
-		$records = array();
+		global $conf, $langs;
 
-		$sql                                                                              = 'SELECT ';
-		$sql                                                                             .= $this->getFieldList();
-		$sql                                                                             .= ' FROM ' . MAIN_DB_PREFIX . $this->table_element . ' as t';
-		if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) $sql .= ' WHERE t.entity IN (' . getEntity($this->table_element) . ')';
-		else $sql                                                                        .= ' WHERE 1 = 1';
-		// Manage filter
-		$sqlwhere = array();
-		if (count($filter) > 0) {
-			foreach ($filter as $key => $value) {
-				if ($key == 't.rowid') {
-					$sqlwhere[] = $key . '=' . $value;
-				} elseif (strpos($key, 'date') !== false) {
-					$sqlwhere[] = $key . ' = \'' . $this->db->idate($value) . '\'';
-				} elseif ($key == 'customsql') {
-					$sqlwhere[] = $value;
-				} else {
-					$sqlwhere[] = $key . ' LIKE \'%' . $this->db->escape($value) . '%\'';
-				}
-			}
+		$error  = 0;
+		$object = new self($this->db);
+		$this->db->begin();
+
+		// Load source object.
+		$object->fetchCommon($fromID);
+        $objectRef = $object->ref;
+        $objectId  = $object->id;
+
+		// Reset some properties.
+		unset($object->id);
+		unset($object->fk_user_creat);
+		unset($object->import_key);
+
+		// Clear fields.
+		if (property_exists($object, 'ref')) {
+            $object->ref = $object->getNextNumRef();
+        }
+        if (!empty($options['label'])) {
+            if (property_exists($object, 'label')) {
+                $object->label = $options['label'];
+            }
+        } else {
+            $object->label = $langs->trans('CloneFrom') . ' ' . $objectRef;
+        }
+		if (property_exists($object, 'ref_ext')) {
+			$object->ref_ext = '';
 		}
-		if (count($sqlwhere) > 0) {
-			$sql .= ' AND (' . implode(' ' . $filtermode . ' ', $sqlwhere) . ')';
+		if (property_exists($object, 'date_creation')) {
+			$object->date_creation = dol_now();
 		}
-
-		if ( ! empty($sortfield)) {
-			$sql .= $this->db->order($sortfield, $sortorder);
+		if (property_exists($object, 'status')) {
+			$object->status = self::STATUS_DRAFT;
 		}
-		if ( ! empty($limit)) {
-			$sql .= ' ' . $this->db->plimit($limit, $offset);
-		}
-		$resql = $this->db->query($sql);
+        if (empty($options['photos'])) {
+            $object->photo = '';
+        }
 
-		if ($resql) {
-			$num = $this->db->num_rows($resql);
-			$i   = 0;
-			while ($i < ($limit ? min($limit, $num) : $num)) {
-				$obj = $this->db->fetch_object($resql);
+        // Create clone
+        $object->context = 'createfromclone';
+		$accidentId      = $object->create($user);
 
-				$record = new self($this->db);
-				$record->setVarsFromFetchObj($obj);
+		if ($accidentId > 0) {
+            // Add Photos.
+            if (!empty($options['photos'])) {
+                $dir  = $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/accident';
+                $path = $dir . '/' . $objectRef . '/photos';
+                dol_mkdir($dir . '/' . $object->ref . '/photos');
+                dolCopyDir($path,$dir . '/' . $object->ref . '/photos', 0, 1);
+            }
+            if (!empty($options['workstop'])) {
+                $accidentWorkstop = new AccidentWorkStop($this->db);
+                $workstops        = $accidentWorkstop->fetchFromParent($objectId);
 
-				$records[$record->id] = $record;
+                if (is_array($workstops) && !empty($workstops)) {
+                    foreach($workstops as $workstop) {
+                        $workstop->fk_accident = $accidentId;
+                        $workstop->ref         = $accidentWorkstop->getNextNumRef();
+                        $workstop->context     = 'createfromclone';
+                        $workstop->create($user);
+                    }
+                }
+            }
+            if (!empty($options['lesion'])) {
+                $accidentLesion = new AccidentLesion($this->db);
+                $lesions        = $accidentLesion->fetchAll('', '', 0, 0, ['customsql' => 't.fk_accident = ' . $objectId]);
 
-				$i++;
-			}
-			$this->db->free($resql);
-
-			return $records;
+                if (is_array($lesions) && !empty($lesions)) {
+                    foreach($lesions as $lesion) {
+                        $lesion->fk_accident = $accidentId;
+                        $lesion->ref         = $lesion->getNextNumRef();
+                        $lesion->context     = 'createfromclone';
+                        $lesion->create($user);
+                    }
+                }
+            }
+            if (!empty($options['metadata'])) {
+                $accidentMetadata = new AccidentMetaData($this->db);
+                $accidentMetadata->fetch(0, '', ' AND t.fk_accident =' . $objectId . ' AND t.status = 1');
+                $accidentMetadata->fk_accident = $accidentId;
+                $accidentMetadata->context     = 'createfromclone';
+                $accidentMetadata->create($user);
+            }
+            if (!empty($options['categories'])) {
+                $cat        = new Categorie($this->db);
+                $categories = $cat->containing($objectId, 'accident');
+                if (is_array($categories) && !empty($categories)) {
+                    $categoryIds = [];
+                    foreach ($categories as $cat) {
+                        $categoryIds[] = $cat->id;
+                    }
+                    $object->setCategories($categoryIds);
+                }
+            }
+            if (!empty($options['attendants'])) {
+                // Load signatory from source object.
+                $signatory   = new SaturneSignature($this->db, $this->module, $this->element);
+                $signatories = $signatory->fetchSignatory('', $fromID, $this->element);
+                if (is_array($signatories) && !empty($signatories)) {
+                    foreach ($signatories as $arrayRole) {
+                        foreach ($arrayRole as $signatoryRole) {
+                            $signatory->createFromClone($user, $signatoryRole->id, $accidentId);
+                        }
+                    }
+                }
+            }
 		} else {
-			$this->errors[] = 'Error ' . $this->db->lasterror();
-			dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
+			$error++;
+			$this->error  = $object->error;
+			$this->errors = $object->errors;
+		}
 
+		unset($object->context);
+
+		// End.
+		if (!$error) {
+			$this->db->commit();
+			return $accidentId;
+		} else {
+			$this->db->rollback();
 			return -1;
 		}
 	}
 
-
 	/**
-	 * Update object into database
+	 * Load object in memory from the database
 	 *
-	 * @param  User $user      User that modifies
-	 * @param  bool $notrigger false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, >0 if OK
+	 * @param  int $parent_id Id parent object
+	 * @return array|int         <0 if KO, 0 if not found, >0 if OK
+	 * @throws Exception
 	 */
-	public function update(User $user, $notrigger = false)
+	public function fetchFromParent(int $parent_id)
 	{
-		global $conf;
+		$filter = ['customsql' => 'fk_element=' . $this->db->escape($parent_id)];
 
-		return $this->updateCommon($user, $notrigger || !$conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_MODIFY);
+		return $this->fetchAll('', '', 0, 0, $filter);
 	}
 
-	/**
-	 * Delete object in database
-	 *
-	 * @param User $user       User that deletes
-	 * @param bool $notrigger  false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, >0 if OK
-	 */
-	public function delete(User $user, $notrigger = false)
-	{
-		global $conf;
+    /**
+     * Load accident infos
+     *
+     * @param  array     $moreParam More param (filter)
+     * @return array     $array     Array of accidents
+     * @throws Exception
+     */
+    public function loadAccidentInfos(array $moreParam = []): array
+    {
+        $array = [];
 
-		$result = $this->update($user, true);
-		if ($result > 0 && !empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_DELETE)) {
-			$this->call_trigger('ACCIDENT_DELETE', $user);
-		}
+        $select             = ', SUM(aw.workstop_days) AS nbAccidentWorkStop';
+        $moreSelects        = ['nbAccidentWorkStop'];
+        $join               = ' INNER JOIN ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_workstop AS aw ON t.rowid = aw.fk_accident';
+        $filter             = 't.status = ' . self::STATUS_VALIDATED . ($moreParam['filter'] ?? '');
+        $groupBy            = ' GROUP BY ' . $this->getFieldList('t');
+        $array['accidents'] = saturne_fetch_all_object_type('Accident', '', '', 0, 0, ['customsql' => $filter], 'AND', false, true, false, $join, [], $select, $moreSelects, $groupBy);
+        if (!is_array($array['accidents'] ) || empty($array['accidents'] )) {
+            $array['accidents'] = [];
+        }
 
-		return $result;
-	}
+        $array['nbAccidents'] = count($array['accidents']);
 
-	/**
-	 *	Load the info information in the object
-	 *
-	 *	@param  int		$id       Id of object
-	 *	@return	void
-	 */
-	public function info($id)
-	{
-		$sql    = 'SELECT rowid, date_creation as datec, tms as datem,';
-		$sql   .= ' fk_user_creat, fk_user_modif';
-		$sql   .= ' FROM ' . MAIN_DB_PREFIX . $this->table_element . ' as t';
-		$sql   .= ' WHERE t.rowid = ' . $id;
-		$result = $this->db->query($sql);
-		if ($result) {
-			if ($this->db->num_rows($result)) {
-				$obj      = $this->db->fetch_object($result);
-				$this->id = $obj->rowid;
-//				if ($obj->fk_user_author) {
-//					$cuser = new User($this->db);
-//					$cuser->fetch($obj->fk_user_author);
-//					$this->user_creation = $cuser;
-//				}
-//
-//				if ($obj->fk_user_valid) {
-//					$vuser = new User($this->db);
-//					$vuser->fetch($obj->fk_user_valid);
-//					$this->user_validation = $vuser;
-//				}
-//
-//				if ($obj->fk_user_cloture) {
-//					$cluser = new User($this->db);
-//					$cluser->fetch($obj->fk_user_cloture);
-//					$this->user_cloture = $cluser;
-//				}
+        return $array;
+    }
 
-				$this->date_creation     = $this->db->jdate($obj->date_creation);
-//				$this->date_modification = $this->db->jdate($obj->datem);
-//				$this->date_validation   = $this->db->jdate($obj->datev);
-			}
+    /**
+     * Load dashboard info accident
+     *
+     * @return array
+     * @throws Exception
+     */
+    public function load_dashboard(): array
+    {
+        global $langs, $conf, $db;
 
-			$this->db->free($result);
-		} else {
-			dol_print_error($this->db);
-		}
-	}
+        // echo '<pre>'; print_r(getDolGlobalInt('SOCIETE_FISCAL_MONTH_START')); echo '</pre>'; exit;
 
-	/**
-	 *  Return the label of the status
-	 *
-	 *  @param  int		$mode          0=long label, 1=short label, 2=Picto + short label, 3=Picto, 4=Picto + long label, 5=Short label + Picto, 6=Long label + Picto
-	 *  @return	string 			       Label of status
-	 */
-	public function getLibStatut($mode = 0)
-	{
-		return $this->LibStatut($this->status, $mode);
-	}
+        $confName        = dol_strtoupper($this->module) . '_DASHBOARD_CONFIG';
+        $dashboardConfig = json_decode(getDolUserString($confName));
+        $array = ['graphs' => [], 'lists' => [], 'disabledGraphs' => []];
 
-	/**
-	 *  Return the status
-	 *
-	 *  @param	int		$status        Id status
-	 *  @param  int		$mode          0=long label, 1=short label, 2=Picto + short label, 3=Picto, 4=Picto + long label, 5=Short label + Picto, 6=Long label + Picto
-	 *  @return string 			       Label of status
-	 */
-	public function LibStatut($status, $mode = 0)
-	{
-		if (empty($this->labelStatus) || empty($this->labelStatusShort)) {
-			global $langs;
-			$langs->load("digiriskdolibarr@digiriskdolibarr");
+        $yearType = !empty($dashboardConfig->filters->yearType) ? $dashboardConfig->filters->yearType : 'calendar';
+        $year     = !empty($dashboardConfig->filters->year) ? $dashboardConfig->filters->year : -1;
 
-			$this->labelStatus[self::STATUS_IN_PROGRESS] = $langs->trans('InProgress');
-		}
+        $now       = dol_now('tzuserrel');
+        $date      = dol_getdate($now);
+        $startDate = dol_mktime(-1, -1, -1, $yearType == 'calendar' ? 1 : getDolGlobalInt('SOCIETE_FISCAL_MONTH_START'), 1, $year == -1 ? $date['year'] : $year);
+        if ($startDate > $now) {
+            $startDate = dol_time_plus_duree($startDate, -1, 'y');
+        }
+        $endDate = dol_time_plus_duree($startDate, 1, 'y');
 
-		$statusType = 'status' . $status;
+        $join                   = ' LEFT JOIN ' . MAIN_DB_PREFIX . $this->table_element . ' as a ON a.rowid = t.fk_accident';
+        $accidentsWithWorkStops = saturne_fetch_all_object_type('AccidentWorkStop', 'DESC', 't.rowid', 0, 0, $year == -1 ? [] : ['customsql' => ' t.date_start_workstop >= \'' . dol_print_date($startDate, '%Y/%m/%d') . '\' AND t.date_start_workstop < \'' . dol_print_date($endDate, '%Y/%m/%d') . '\''], 'AND', false, true, false, $join);
+        $accidents              = $this->fetchAll('', '', 0, 0, ['customsql' => ' t.status > ' . self::STATUS_DRAFT . ($year == -1 ? '' : ' AND t.accident_date >= \'' . dol_print_date($startDate, '%Y/%m/%d') . '\' AND t.accident_date < \'' . dol_print_date($endDate, '%Y/%m/%d') . '\'')]);
+        $digiriskElement        = new DigiriskElement($db);
+        $digiriskElements       = $digiriskElement->fetchDigiriskElementFlat(0);
 
-		return dolGetStatus($this->labelStatus[$status], $this->labelStatusShort[$status], '', $statusType, $mode);
-	}
+        if (empty($accidents) && !is_array($accidents)) {
+            $accidents = [];
+        }
+        if (empty($accidentsWithWorkStops) && !is_array($accidentsWithWorkStops)) {
+            $accidentsWithWorkStops = [];
+        }
 
-	/**
-	 *        Return a link on thirdparty (with picto)
-	 *
-	 * @param int $withpicto Add picto into link (0=No picto, 1=Include picto with link, 2=Picto only)
-	 * @param int $maxlen Max length of name
-	 * @param int $notooltip 1=Disable tooltip
-	 * @return    string                              String with URL
-	 */
-	public function getNomUrl($withpicto = 0, $maxlen = 0, $notooltip = 0)
-	{
-		global $conf, $langs, $hookmanager;
+        $arrayNbDaysWithoutAccident = $this->getNbDaysWithoutAccident($accidents);
+        $arrayNbWorkstopDays        = $this->getNbWorkstopDays($accidentsWithWorkStops);
 
-		if ( ! empty($conf->dol_no_mouse_hover)) $notooltip = 1; // Force disable tooltips
+        $arrayNbPresquAccidents        = $this->getNbPresquAccidents();
+        $arrayNbAccidentInvestigations = $this->getNbAccidentInvestigations();
 
-		$name = $this->ref;
-		$result = ''; $label = '';
+        $evaluator                   = new Evaluator($this->db);
+        $employees                   = $evaluator->getNbEmployees();
+        $arrayNbAccidentsByEmployees = $this->getNbAccidentsByEmployees($accidents, $accidentsWithWorkStops, $employees);
+        $arrayFrequencyIndex         = $this->getFrequencyIndex($accidentsWithWorkStops, $employees);
+        $arrayFrequencyRate          = $this->getFrequencyRate($accidentsWithWorkStops);
+        $arrayGravityRate            = $this->getGravityRate($accidentsWithWorkStops);
 
-		if ( ! empty($this->logo) && class_exists('Form')) {
-			$label .= '<div class="photointooltip">';
-			$label .= Form::showphoto('societe', $this, 0, 40, 0, '', 'mini', 0); // Important, we must force height so image will have height tags and if image is inside a tooltip, the tooltip manager can calculate height and position correctly the tooltip.
-			$label .= '</div><div style="clear: both;"></div>';
-		}
+        // dol_time_plus_duree
 
-		$label .= '<div class="centpercent">';
+        $currentYear = (int) dol_print_date(dol_now('tzuserrel'), '%Y');
+        $years = range($currentYear, $currentYear - 10);
 
 
-		// By default
-		$label    .= '<u>' . $langs->trans("Accident") . '</u>';
-		$linkstart = '<a href="' . DOL_URL_ROOT . '/custom/digiriskdolibarr/view/accident/accident_card.php?id=' . $this->id;
+        $array['graphsFilters'] = [
+            'yearType' => [
+                'title'        => $langs->transnoentities('YearType'),
+                'type'         => 'selectarray',
+                'filter'       => 'yearType',
+                'values'       => ['calendar' => $langs->transnoentities('CalendarYear'), 'fiscal' => $langs->transnoentities('FiscalYear')],
+                'currentValue' => $yearType
+            ],
+            'year' => [
+                'title'        => $langs->transnoentities('Year'),
+                'type'         => 'selectarray',
+                'filter'       => 'year',
+                'values'       => array_combine(array_merge([-1], $years), array_merge([$langs->transnoentities('AllYears')], array_map('strval', $years))),
+                'currentValue' => $year
+            ]
+    ];
 
-		if ( ! empty($this->ref)) {
-			$label .= '<br><b>' . $langs->trans('Ref') . ':</b> ' . $this->ref;
-		}
+        $array['widgets'] = [
+            'accident' => [
+                'title'      => $langs->transnoentities('Accidents'),
+                'picto'      => 'fas fa-user-injured',
+                'pictoColor' => '#F39B1F',
+                'label'      => [$langs->transnoentities('DayWithoutAccident') ?? '', $langs->transnoentities('WorkStopDays') ?? '', $langs->transnoentities('NbAccidentsByEmployees') ?? '', $langs->transnoentities('NbPresquAccidents') ?? '', $langs->transnoentities('NbAccidentInvestigations') ?? ''],
+                'content'    => [$arrayNbDaysWithoutAccident['daywithoutaccident'] ?? 0, $arrayNbWorkstopDays['nbworkstopdays'] ?? 0, $arrayNbAccidentsByEmployees['nbaccidentsbyemployees'] ?? 0, $arrayNbPresquAccidents['nbpresquaccidents'] ?? 0, $arrayNbAccidentInvestigations['nbaccidentinvestigations'] ?? 0],
+                'widgetName' => $langs->transnoentities('Accident')
+            ],
+            'accidentrateindicator' => [
+                'title'      => $langs->transnoentities('Frequency'),
+                'picto'      => 'fas fa-chart-bar',
+                'pictoColor' => '#9735FF',
+                'label'      => [$langs->transnoentities('FrequencyIndex') ?? '', $langs->transnoentities('FrequencyRate') ?? '', $langs->transnoentities('GravityRate') ?? ''],
+                'content'    => [$arrayFrequencyIndex['frequencyindex'] ?? 0, $arrayFrequencyRate['frequencyrate'] ?? 0, $arrayGravityRate['gravityrate'] ?? 0],
+                'tooltip'    => [
+                    (($conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES) ? $langs->transnoentities('FrequencyIndexTooltip') . '<br>' . $langs->transnoentities('NbEmployeesConfTooltip') : $langs->transnoentities('FrequencyIndexTooltip')),
+                    (($conf->global->DIGIRISKDOLIBARR_NB_WORKED_HOURS > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_WORKED_HOURS) ? $langs->transnoentities('FrequencyRateTooltip') . '<br>' . $langs->transnoentities('NbWorkedHoursTooltip') : $langs->transnoentities('FrequencyRateTooltip')),
+                    (($conf->global->DIGIRISKDOLIBARR_NB_WORKED_HOURS > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_WORKED_HOURS) ? $langs->transnoentities('GravityRateTooltip') . '<br>' . $langs->transnoentities('NbWorkedHoursTooltip') : $langs->transnoentities('GravityRateTooltip'))
+                ],
+                'widgetName' => $langs->transnoentities('AccidentRateIndicator')
+            ],
+        ];
 
-		$label .= '</div>';
+        if (empty($dashboardConfig->graphs->AccidentRepartition->hide)) {
+            $array['graphs'][] = $this->getNbAccidents($accidents, $accidentsWithWorkStops);
+        } else {
+            $array['disabledGraphs']['AccidentRepartition'] = $langs->transnoentities('AccidentRepartition');
+        }
+        if ($year == -1) {
+            if (empty($dashboardConfig->graphs->AccidentByYear->hide)) {
+                $array['graphs'][] = $this->getNbAccidentsLast3years($accidents);
+            } else {
+                $array['disabledGraphs']['AccidentByYear'] = $langs->transnoentities('AccidentByYear');
+            }
+        }
+        if (empty($dashboardConfig->graphs->AccidentRegister->hide)) {
+            $array['graphs'][] = $this->getAccidentRegister($accidents);
+        } else {
+            $array['disabledGraphs']['AccidentRegister'] = $langs->transnoentities('AccidentRegister');
+        }
+        if (empty($dashboardConfig->graphs->AccidentsByWorkStops->hide)) {
+            $array['graphs'][] = $this->getNbAccidentsByWorkStops($accidents, $accidentsWithWorkStops);
+        } else {
+            $array['disabledGraphs']['AccidentsByWorkStops'] = $langs->transnoentities('AccidentsByWorkStops');
+        }
+        if (empty($dashboardConfig->graphs->AccidentsWorkStopByDigiriskElem->hide)) {
+            $array['graphs'][] = $this->getAccidentsWorkStopByDigiriskElem($accidents, $accidentsWithWorkStops, $digiriskElements);
+        } else {
+            $array['disabledGraphs']['AccidentsWorkStopByDigiriskElem'] = $langs->transnoentities('AccidentsWorkStopByDigiriskElem');
+        }
 
-		$linkstart .= '"';
+        return $array;
+    }
 
-		$linkclose = '';
-		if (empty($notooltip)) {
-			if ( ! empty($conf->global->MAIN_OPTIMIZEFORTEXTBROWSER)) {
-				$label      = $langs->trans("ShowCompany");
-				$linkclose .= ' alt="' . dol_escape_htmltag($label, 1) . '"';
-			}
-			$linkclose .= ' title="' . dol_escape_htmltag($label, 1) . '"';
-			$linkclose .= ' class="classfortooltip refurl"';
-		}
-		$linkstart .= $linkclose . '>';
-		$linkend    = '</a>';
+    /**
+     * Get number days without accident
+     *
+     * @param  array $accidents Array of accidents
+     * @return array
+     */
+    public function getNbDaysWithoutAccident(array $accidents = []): array
+    {
+        $lastAccident = end($accidents);
+        if ($lastAccident != null) {
+            $lastTimeAccident            = dol_now() - $lastAccident->accident_date;
+            $array['daywithoutaccident'] = abs(round($lastTimeAccident / 86400));
+        } else {
+            $array['daywithoutaccident'] = 'N/A';
+        }
+        return $array;
+    }
 
-		$result                      .= $linkstart;
-		if ($withpicto) $result      .= '<i class="fas fa-user-injured"></i>' . ' ';
-		if ($withpicto != 2) $result .= ($maxlen ? dol_trunc($name, $maxlen) : $name);
-		$result                      .= $linkend;
+    /**
+     * Get number accidents
+     *
+     * @param array $accidents              Array of accidents
+     * @param array $accidentsWithWorkStops Array of accidents with work stops
+     * @return array
+     */
+    public function getNbAccidents(array $accidents = [], array $accidentsWithWorkStops = []): array
+    {
+        global $conf, $langs;
 
-		 $result .= $hookmanager->resPrint;
+        // Graph Title parameters
+        $array['title'] = $langs->transnoentities('AccidentRepartition');
+        $array['name']  = 'AccidentRepartition';
+        $array['picto'] = $this->picto;
 
-		return $result;
-	}
+        // Graph parameters
+        $array['width']      = '100%';
+        $array['height']     = 400;
+        $array['type']       = 'pie';
+        $array['showlegend'] = $conf->browser->layout == 'phone' ? 1 : 2;
+        $array['dataset']    = 1;
 
-	/**
-	 * Load dashboard info accident
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function load_dashboard()
-	{
-		global $conf, $langs;
+        $array['labels'] = [
+            'accidents' => [
+                'label' => $langs->transnoentities('AccidentWithDIAT'),
+                'color' => '#e05353'
+            ],
+            'accidentswithoutDIAT' => [
+                'label' => $langs->transnoentities('AccidentWithoutDIAT'),
+                'color' => '#e9ad4f'
+            ],
+        ];
 
-		$arrayNbDaysWithoutAccident    = $this->getNbDaysWithoutAccident();
-		$arrayNbAccidents              = $this->getNbAccidents();
-		$arrayNbWorkstopDays           = $this->getNbWorkstopDays();
-		$arrayNbAccidentsByEmployees   = $this->getNbAccidentsByEmployees();
-		$arrayNbPresquAccidents        = $this->getNbPresquAccidents();
-		$arrayNbAccidentInvestigations = $this->getNbAccidentInvestigations();
-		$arrayFrequencyIndex           = $this->getFrequencyIndex();
-		$arrayFrequencyRate            = $this->getFrequencyRate();
-		//$arrayGravityIndex           = $this->getGravityIndex();
-		$arrayGravityRate              = $this->getGravityRate();
+        $array['data']['accidents']            = count($accidentsWithWorkStops);
+        $array['data']['accidentswithoutDIAT'] = count($accidents) - $array['data']['accidents'];
 
-		$array['widgets'] = array(
-			DashboardDigiriskStats::DASHBOARD_ACCIDENT => array(
-				'label'      => array($langs->transnoentities("DayWithoutAccident"), $langs->transnoentities("WorkStopDays"), $langs->transnoentities("NbAccidentsByEmployees"), $langs->transnoentities("NbPresquAccidents"), $langs->transnoentities("NbAccidentInvestigations")),
-				'content'    => array($arrayNbDaysWithoutAccident['daywithoutaccident'], $arrayNbWorkstopDays['nbworkstopdays'], $arrayNbAccidentsByEmployees['nbaccidentsbyemployees'], $arrayNbPresquAccidents['nbpresquaccidents'], $arrayNbAccidentInvestigations['nbaccidentinvestigations']),
-				'picto'      => 'fas fa-user-injured',
-				'widgetName' => $langs->transnoentities('Accident')
-			),
-			DashboardDigiriskStats::DASHBOARD_ACCIDENT_INDICATOR_RATE => array(
-				'label'      => array($langs->transnoentities("FrequencyIndex"), $langs->transnoentities("FrequencyRate"), $langs->transnoentities("GravityRate")),
-				'content'    => array($arrayFrequencyIndex['frequencyindex'], $arrayFrequencyRate['frequencyrate'], $arrayGravityRate['gravityrate']),
-				'tooltip'    => array(
-					(($conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES) ? $langs->transnoentities("FrequencyIndexTooltip") . '<br>' . $langs->transnoentities("NbEmployeesConfTooltip") : $langs->transnoentities("FrequencyIndexTooltip")),
-					(($conf->global->DIGIRISKDOLIBARR_NB_WORKED_HOURS > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_WORKED_HOURS) ? $langs->transnoentities("FrequencyRateTooltip") . '<br>' . $langs->transnoentities("NbWorkedHoursTooltip") : $langs->transnoentities("FrequencyRateTooltip")),
-					(($conf->global->DIGIRISKDOLIBARR_NB_WORKED_HOURS > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_WORKED_HOURS) ? $langs->transnoentities("GravityRateTooltip") . '<br>' . $langs->transnoentities("NbWorkedHoursTooltip") : $langs->transnoentities("GravityRateTooltip"))
-				),
-				'picto'      => 'fas fa-chart-bar',
-				'widgetName' => $langs->transnoentities('AccidentRateIndicator')
-			)
-		);
+        return $array;
+    }
 
-		$array['graphs'] = $arrayNbAccidents;
+    /**
+     * Get number accidents for last 3 years
+     *
+     * @param  array $accidents Array of accidents
+     * @return array
+     */
+    public function getNbAccidentsLast3years(array $accidents = []): array
+    {
+        global $langs;
 
-		return $array;
-	}
+        // Graph Title parameters
+        $array['title'] = $langs->transnoentities('AccidentByYear');
+        $array['name']  = 'AccidentByYear';
+        $array['picto'] = $this->picto;
 
-	/**
-	 * Get number days without accident.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbDaysWithoutAccident() {
-		// Number days without accident
-		$lastAccident = $this->fetchAll('DESC', 'accident_date', 1, 0 );
-		if (is_array($lastAccident) && !empty($lastAccident)) {
-			$lastTimeAccident = dol_now() - reset($lastAccident)->accident_date;
-			$array['daywithoutaccident'] = abs(round($lastTimeAccident / 86400));
-		} else {
-			$array['daywithoutaccident'] = 'N/A';
-		}
-		return $array;
-	}
+        // Graph parameters
+        $array['width']      = '100%';
+        $array['height']     = 400;
+        $array['type']       = 'bar';
+        $array['showlegend'] = 1;
+        $array['dataset']    = 3;
 
-	/**
-	 * Get number accidents.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbAccidents() {
-		global $langs;
+        $array['labels'] = [
+            'pastlastyear' => [
+                'label' => date('Y', strtotime('-2 year')),
+                'color' => '#9567aa'
+            ],
+            'lastyear' => [
+                'label' => date('Y', strtotime('-1 year')),
+                'color' => '#4f9ebe'
+            ],
+            'currentyear' => [
+                'label' => date('Y'),
+                'color' => '#fac461'
+            ],
+        ];
 
-		// Number accidents
-		$array['title'] = $langs->transnoentities('AccidentRepartition');
-		$array['picto'] = '<i class="fas fa-user-injured"></i>';
-		$array['labels'] = array(
-			'accidents' => array(
-				'label' => $langs->transnoentities('AccidentWithDIAT'),
-				'color' => '#e05353'
-			),
-			'accidentswithoutDIAT' => array(
-				'label' => $langs->transnoentities('AccidentWithoutDIAT'),
-				'color' => '#e9ad4f'
-			),
-		);
-		$allaccidents = $this->fetchAll('','','','',['customsql' => ' t.status > 0 ']);
+        $accidentsByYear = [];
+        $accidentsArray  = [];
+        if (is_array($accidents) && !empty($accidents)) {
+            foreach($accidents as $accident) {
+                $accidentDate = dol_getdate($accident->accident_date);
+                $yearKey      = $accidentDate['year'];
+                $monthKey     = $accidentDate['mon'];
+                if (!isset($accidentsByYear[$yearKey][$monthKey - 1])) {
+                    $accidentsByYear[$yearKey][$monthKey - 1] = 0;
+                }
+                $accidentsByYear[$yearKey][$monthKey - 1] += 1;
+            }
 
-		if (is_array($allaccidents) && !empty($allaccidents)) {
-			$accidentworkstop = new AccidentWorkStop($this->db);
-			foreach ($allaccidents as $accident) {
-				$allaccidentworkstop = $accidentworkstop->fetchFromParent($accident->id);
-				if (is_array($allaccidentworkstop) && !empty($allaccidentworkstop)) {
-					$nbaccidents += 1;
-				} else {
-					$nbaccidentswithoutDIAT += 1;
-				}
-			}
-			$array['data']['accidents'] = $nbaccidents;
-			$array['data']['accidentswithoutDIAT'] = $nbaccidentswithoutDIAT;
-		} else {
-			$array['data']['accidents'] = 0;
-			$array['data']['accidentswithoutDIAT'] = 0;
-		}
-		return $array;
-	}
+            for ($i = 1; $i < 13; $i++) {
+                $month = $langs->transnoentitiesnoconv('MonthShort'.sprintf('%02d', $i));
+                $accidentsArray[$i - 1] = [$month];
+                for ($j = 0; $j < 3; $j++) {
+                    $accidentsArray[$i - 1][date('Y') - 2 + $j] = 0;
+                }
+            }
 
-	/**
-	 * Get number workstop days.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbWorkstopDays() {
-		// Number workstop days
-		$allaccidents = $this->fetchAll();
-		if (is_array($allaccidents) && !empty($allaccidents)) {
-			$accidentworkstop = new AccidentWorkStop($this->db);
-			foreach ($allaccidents as $accident) {
-				$allaccidentworkstop = $accidentworkstop->fetchFromParent($accident->id);
-				if (is_array($allaccidentworkstop) && !empty($allaccidentworkstop)) {
-					foreach ($allaccidentworkstop as $accidentworkstop) {
-						if ($accidentworkstop->id > 0) {
-							$nbworkstopdays += $accidentworkstop->workstop_days;
-						}
-					}
-				}
-			}
-			$array['nbworkstopdays'] = $nbworkstopdays ?: 0;
-		} else {
-			$array['nbworkstopdays'] = 0;
-		}
-		return $array;
-	}
+            foreach($accidentsByYear as $year => $accidentByYear) {
+                foreach($accidentByYear as $month => $accidentByMonth) {
+                    if (isset($accidentsArray[$month][$year])) {
+                        $accidentsArray[$month][$year] = $accidentByMonth;
+                    }
+                }
+            }
 
-	/**
-	 * Get number accidents by employees.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbAccidentsByEmployees() {
-		$evaluator = new Evaluator($this->db);
+            foreach($accidentsArray as $accidentArray) {
+                $array['data'][] = array_values($accidentArray);
+            }
+        }
 
-		// Number accidents by employees
-		$arrayNbAccidents = $this->getNbAccidents();
-		$arrayNbEmployees = $evaluator->getNbEmployees();
-		if ($arrayNbEmployees['nbemployees'] > 0) {
-			$nbaccidentsbyemployees = ($arrayNbAccidents['data']['accidents'] + $arrayNbAccidents['data']['accidentswithoutDIAT']) / $arrayNbEmployees['nbemployees'];
-			if ($nbaccidentsbyemployees > 0) {
-				$array['nbaccidentsbyemployees'] = price2Num($nbaccidentsbyemployees, 2);
-			} else {
-				$array['nbaccidentsbyemployees'] = 'N/A';
-			}
-		} else {
-			$array['nbaccidentsbyemployees'] = 'N/A';
-		}
-		return $array;
-	}
+        return $array;
+    }
 
-	/**
-	 * Get number presqu'accidents.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbPresquAccidents() {
-		global $langs;
+    /**
+     * Get number workstop days
+     *
+     * @param  array $accidentsWithWorkStops Array of accidents with work stops
+     * @return array
+     */
+    public function getNbWorkstopDays(array $accidentsWithWorkStops = []): array
+    {
+        $nbWorkStopDays = 0;
+        if (!empty($accidentsWithWorkStops)) {
+            foreach ($accidentsWithWorkStops as $accidentsWithWorkStop) {
+                $nbWorkStopDays += $accidentsWithWorkStop->workstop_days;
+            }
+        }
+        $array['nbworkstopdays'] = $nbWorkStopDays;
 
-		$category = new Categorie($this->db);
+        return $array;
+    }
 
-		// Number accidents presqu'accidents
-		$category->fetch(0, $langs->transnoentities('PresquAccident'));
-		$alltickets = $category->getObjectsInCateg(Categorie::TYPE_TICKET);
-		if (is_array($alltickets) && !empty($alltickets)) {
-			$array['nbpresquaccidents'] = count($alltickets);
-		} else {
-			$array['nbpresquaccidents'] = 'N/A';
-		}
-		return $array;
-	}
+    /**
+     * Get number accidents by employees
+     *
+     * @param  array $accidents              Array of accidents
+     * @param  array $accidentsWithWorkStops Array of accidents with work stops
+     * @param  array $employees              Array of employees
+     * @return array
+     */
+    public function getNbAccidentsByEmployees(array $accidents = [], array $accidentsWithWorkStops = [], array $employees = []): array
+    {
+        $arrayNbAccidents = $this->getNbAccidents($accidents, $accidentsWithWorkStops);
+        if ($employees['nbemployees'] > 0 && ($arrayNbAccidents['data']['accidents'] + $arrayNbAccidents['data']['accidentswithoutDIAT']) > 0) {
+            $nbAccidentsByEmployees          = ($arrayNbAccidents['data']['accidents'] + $arrayNbAccidents['data']['accidentswithoutDIAT']) / $employees['nbemployees'];
+            $array['nbaccidentsbyemployees'] = price2Num($nbAccidentsByEmployees, 2);
+        } else {
+            $array['nbaccidentsbyemployees'] = 'N/A';
+        }
+        return $array;
+    }
 
-	/**
-	 * Get number accident investigations.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbAccidentInvestigations() {
-		// Number accident investigations
-		$allaccidents = $this->fetchAll();
-		if (is_array($allaccidents) && !empty($allaccidents)) {
-			$accidentmetadata = new AccidentMetaData($this->db);
-			foreach ($allaccidents as $accident) {
-				$filter = ' AND t.fk_accident = ' . $accident->id . ' AND t.status = 1 AND t.accident_investigation = 1';
-				$result = $accidentmetadata->fetch(0, '', $filter);
-				if ($result > 0) {
-					$nbaccidentinvestigations += 1;
-				}
-			}
-			if ($nbaccidentinvestigations > 0) {
-				$array['nbaccidentinvestigations'] = $nbaccidentinvestigations;
-			} else {
-				$array['nbaccidentinvestigations'] = 'N/A';
-			}
-		} else {
-			$array['nbaccidentinvestigations'] = 'N/A';
-		}
-		return $array;
-	}
+    /**
+     * Get number presqu'accidents
+     *
+     * @return array
+     * @throws Exception
+     */
+    public function getNbPresquAccidents(): array
+    {
+        global $conf, $langs;
 
-	/**
-	 * Get frequency index (number accidents with DIAT by employees) x 1000.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getFrequencyIndex() {
-		$evaluator = new Evaluator($this->db);
+        $array['nbpresquaccidents'] = 'N/A';
 
-		// (Number accidents with DIAT by employees) x 1 000
-		$arrayNbAccidents = $this->getNbAccidents();
-		$arrayNbEmployees = $evaluator->getNbEmployees();
-		if ($arrayNbEmployees['nbemployees'] > 0) {
-			$frequencyindex = ($arrayNbAccidents['data']['accidents']/$arrayNbEmployees['nbemployees']) * 1000;
-			if ($frequencyindex > 0) {
-				$array['frequencyindex'] = price2Num($frequencyindex, 2);
-			} else {
-				$array['frequencyindex'] = 'N/A';
-			}
-		} else {
-			$array['frequencyindex'] = 'N/A';
-		}
-		return $array;
-	}
+        $category = new Categorie($this->db);
 
-	/**
-	 * Get frequency rate (number accidents with DIAT by working hours) x 1 000 000.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getFrequencyRate() {
-		// (Number accidents with DIAT by working hours) x 1 000 000
-		$arrayNbAccidents = $this->getNbAccidents();
-		$total_workhours  = getWorkedHours();
+        $result = $category->fetch(0, $langs->transnoentities('PresquAccident'));
+        if ($result <= 0) {
+            return $array;
+        }
 
-		if ($total_workhours > 0) {
-			$frequencyrate = ($arrayNbAccidents['data']['accidents']/$total_workhours) * 1000000;
-			if ($frequencyrate > 0) {
-				$array['frequencyrate'] = price2Num($frequencyrate, 5);
-			} else {
-				$array['frequencyrate'] = 'N/A';
-			}
-		} else {
-			$array['frequencyrate'] = 'N/A';
-		}
-		return $array;
-	}
+        $filter  = 't.fk_statut > 0 AND t.entity = ' . $conf->entity . ' AND cp.fk_categorie IN (' . $category->id  . ')';
+        $tickets = saturne_fetch_all_object_type('Ticket', '', '', 0, 0, ['customsql' => $filter], 'AND', false, false, true);
+        if (!is_array($tickets) || empty($tickets)) {
+            return $array;
+        }
 
-	/**
-	 * Get gravity rate (number workstop days by working hours) x 1 000.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getGravityRate() {
-		// (Number workstop days by working hours) x 1 000
-		$arrayNbWorkstopDays = $this->getNbWorkstopDays();
-		$total_workhours     = getWorkedHours();
-		if ($total_workhours > 0) {
-			$gravityrate = ($arrayNbWorkstopDays['nbworkstopdays']/$total_workhours) * 1000;
-			if ($gravityrate > 0) {
-				$array['gravityrate'] = price2Num($gravityrate, 5);
-			} else {
-				$array['gravityrate'] = 'N/A';
-			}
-		} else {
-			$array['gravityrate'] = 'N/A';
-		}
-		return $array;
-	}
+        $array['nbpresquaccidents'] = count($tickets);
+
+        return $array;
+    }
+
+    /**
+     * Get number accident investigations
+     *
+     * @param  array    $moreParam More param (Object/user/etc)
+     * @return array
+     * @throws Exception
+     */
+    public function getNbAccidentInvestigations(array $moreParam = []): array
+    {
+        require_once __DIR__ . '/accidentinvestigation.class.php';
+
+        $accidentInvestigation = new AccidentInvestigation($this->db);
+        if (isset($moreParam['filter']) && strpos($moreParam['filter'], 't.entity') !== false) {
+            $accidentInvestigation->ismultientitymanaged = 0;
+        }
+        $accidentInvestigations = $accidentInvestigation->fetchAll('', '', 0, 0, ['customsql' => ' t.status > ' . AccidentInvestigation::STATUS_DRAFT . ($moreParam['filter'] ?? '')]);
+        if (!empty($accidentInvestigations) && is_array($accidentInvestigations)) {
+            $array['nbaccidentinvestigations'] = count($accidentInvestigations);
+        } else {
+            $array['nbaccidentinvestigations'] = 'N/A';
+        }
+        return $array;
+    }
+
+    /**
+     * Get frequency index (number accidents with DIAT by employees) x 1000
+     *
+     * @param  array $accidentsWithWorkStops Array of accidents with work stops
+     * @param  array $employees              Array of employees
+     * @return array
+     */
+    public function getFrequencyIndex(array $accidentsWithWorkStops = [], array $employees = []): array
+    {
+        if ($employees['nbemployees'] > 0) {
+            $frequencyIndex = (count($accidentsWithWorkStops) / $employees['nbemployees']) * 1000;
+            if ($frequencyIndex > 0) {
+                $array['frequencyindex'] = price2Num($frequencyIndex, 2);
+            } else {
+                $array['frequencyindex'] = 'N/A';
+            }
+        } else {
+            $array['frequencyindex'] = 'N/A';
+        }
+        return $array;
+    }
+
+    /**
+     * Get frequency rate (number accidents with DIAT by working hours) x 1 000 000
+     *
+     * @param  array $accidentsWithWorkStops Array of accidents with work stops
+     * @return array
+     */
+    public function getFrequencyRate(array $accidentsWithWorkStops = []): array
+    {
+        $workHours = getWorkedHours();
+        if ($workHours > 0) {
+            $frequencyRate = (count($accidentsWithWorkStops) / $workHours) * 1000000;
+            if ($frequencyRate > 0) {
+                $array['frequencyrate'] = price2Num($frequencyRate, 2);
+            } else {
+                $array['frequencyrate'] = 'N/A';
+            }
+        } else {
+            $array['frequencyrate'] = 'N/A';
+        }
+        return $array;
+    }
+
+    /**
+     * Get gravity rate (number workstop days by working hours) x 1 000
+     *
+     * @param  array $accidentsWithWorkStops Array of accidents with work stops
+     * @return array
+     */
+    public function getGravityRate(array $accidentsWithWorkStops = []): array
+    {
+        $arrayNbWorkstopDays = $this->getNbWorkstopDays($accidentsWithWorkStops);
+        $workHours           = getWorkedHours();
+        if ($workHours > 0) {
+            $gravityRate = ($arrayNbWorkstopDays['nbworkstopdays'] / $workHours) * 1000;
+            if ($gravityRate > 0) {
+                $array['gravityrate'] = price2Num($gravityRate, 5);
+            } else {
+                $array['gravityrate'] = 'N/A';
+            }
+        } else {
+            $array['gravityrate'] = 'N/A';
+        }
+        return $array;
+    }
+
+    /**
+     * Get graph of AccidentRegister
+     *
+     * @param  array $accident Array of accidents
+     * @return array
+     */
+    public function getAccidentRegister(array $accident = []): array
+    {
+        global $langs;
+
+        $accidentWithoutRegister = count(array_filter($accident, function($elem) {
+            return $elem->fk_ticket === null;
+        }));
+        $array = [];
+
+        $array['title'] = $langs->transnoentities('AccidentRegister');
+        $array['name']  = 'AccidentRegister';
+        $array['picto'] = $this->picto;
+
+        // Graph parameters
+        $array['width']      = '100%';
+        $array['height']     = 400;
+        $array['type']       = 'pie';
+        $array['showlegend'] = 2;
+        $array['dataset']    = 1;
+
+        $array['labels'] = [
+            [
+                'label' => $langs->transnoentities('AccidentWithoutRegister'),
+                'color' => '#9567aa'
+            ],
+            [
+                'label' => $langs->transnoentities('AccidentWithRegister'),
+                'color' => '#4f9ebe'
+            ],
+        ];
+
+        $array['data'] = [$accidentWithoutRegister, count($accident) - $accidentWithoutRegister];
+        return $array;
+    }
+
+    /**
+     * Get graph of NbAccidentsByWorkStops
+     *
+     * @param  array $accidents             Array of accidents
+     * @param  array $accidentsWithWorkStop Array of work stops
+     * @return array
+     */
+    public function getNbAccidentsByWorkStops(array $accidents = [], array $accidentsWithWorkStop = []): array
+    {
+        global $langs;
+
+        $array['title'] = $langs->transnoentities('WorkStopDurationDistribution');
+        $array['name']  = 'WorkStopDurationDistribution';
+        $array['picto'] = $this->picto;
+
+        // Graph parameters
+        $array['width']      = '100%';
+        $array['height']     = 400;
+        $array['type']       = 'pie';
+        $array['showlegend'] = 2;
+        $array['dataset']    = 1;
+
+        $array['labels'] = [
+            'noAbsence' => [
+                'label' => $langs->transnoentities('NoAbsence'),
+                'color' => '#4caf50'
+            ],
+            'upTo4Days' => [
+                'label' => $langs->transnoentities('UpTo4Days'),
+                'color' => '#8bc34a'
+            ],
+            'upTo21Days' => [
+                'label' => $langs->transnoentities('UpTo21Days'),
+                'color' => '#ffc107'
+            ],
+            'upTo3Months' => [
+                'label' => $langs->transnoentities('UpTo3Months'),
+                'color' => '#ff9800'
+            ],
+            'upTo6Months' => [
+                'label' => $langs->transnoentities('UpTo6Months'),
+                'color' => '#ff5722'
+            ],
+            'moreThan6Months' => [
+                'label' => $langs->transnoentities('MoreThan6Months'),
+                'color' => '#f44336'
+            ],
+        ];
+        $array['data'] = [
+            'noAbsence'       => 0,
+            'upTo4Days'       => 0,
+            'upTo21Days'      => 0,
+            'upTo3Months'     => 0,
+            'upTo6Months'     => 0,
+            'moreThan6Months' => 0,
+        ];
+
+        $nbAccidensWithWorkStop = [];
+        foreach ($accidentsWithWorkStop as $workstop) {
+            $days = abs($workstop->date_end_workstop - $workstop->date_start_workstop) / 86400;
+
+            if ($days < 4) {
+                $array['data']['upTo4Days']++;
+            } elseif ($days < 21) {
+                $array['data']['upTo21Days']++;
+            } elseif ($days < 90) {
+                $array['data']['upTo3Months']++;
+            } elseif ($days < 180) {
+                $array['data']['upTo6Months']++;
+            } else {
+                $array['data']['moreThan6Months']++;
+            }
+            $nbAccidensWithWorkStop[$workstop->fk_accident] = $workstop->fk_accident;
+        }
+        foreach ($accidents as $accident) {
+            if (!in_array($accident->id, $nbAccidensWithWorkStop)) {
+                $array['data']['noAbsence']++;
+            }
+        }
+        return $array;
+    }
+
+    /**
+     * Get graph of AccidentsWorkStopByDigiriskElem
+     *
+     * @param  array $accidents             Array of accidents
+     * @param  array $accidentsWithWorkStop Array of work stops
+     * @param  array $digiriskElements      Array of digirisk elements
+     * @return array
+     */
+    public function getAccidentsWorkStopByDigiriskElem(array $accidents = [], array $accidentsWithWorkStop = [], array $digiriskElements = []): array
+    {
+        global $langs;
+
+        $array['title'] = $langs->transnoentities('WorkStopDurationDistributionDigiriskElem');
+        $array['name']  = 'WorkStopDurationDistributionDigiriskElem';
+        $array['picto'] = $this->picto;
+
+        // Graph parameters
+        $array['width']      = '100%';
+        $array['height']     = 400;
+        $array['type']       = 'pie';
+        $array['showlegend'] = 2;
+        $array['dataset']    = 1;
+
+        $array['data'] = [];
+        foreach ($accidentsWithWorkStop as $workstop) {
+            if (!empty($accidents[$workstop->fk_accident])) {
+                $accident = $accidents[$workstop->fk_accident];
+                if (empty($array['data'][$accident->fk_element])) {
+                    $array['data'][$accident->fk_element] = 0;
+                }
+                $array['data'][$accident->fk_element] += abs($workstop->date_end_workstop - $workstop->date_start_workstop) / 86400;
+            }
+        }
+        unset($array['data'][null]);
+
+        $array['labels'] = [];
+        foreach (array_keys($array['data']) as $digiriskElemId) {
+            $digiriskElem = $digiriskElements[$digiriskElemId]['object'];
+            $array['labels'][$digiriskElemId] = [
+                'label' => $digiriskElem->ref . ' - ' . $digiriskElem->label,
+            ];
+        }
+
+        return $array;
+    }
+
+    /**
+     * Get user victim object.
+     *
+     * @return User
+     */
+    public function getUserVictim():User {
+        $user = new User($this->db);
+        $signatory = new SaturneSignature($this->db);
+
+        $victimSignatory = $signatory->fetchSignatory('Victim', $this->id, 'accident');
+
+        if (is_array($victimSignatory) && !empty($victimSignatory)) {
+            $victimSignatory = array_shift($victimSignatory);
+            $user->fetch($victimSignatory->element_id);
+        }
+        return $user;
+    }
+
+    /**
+     * Write information of trigger description
+     *
+     * @return string Description to display in actioncomm->note_private
+     */
+    public function getTriggerDescription(): string
+    {
+        global $conf, $langs;
+
+        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+
+        $userEmployer = new User($this->db);
+        $userVictim   = $this->getUserVictim();
+
+        $userEmployer->fetch($this->fk_user_employer);
+
+        //1 : Accident in DU / GP, 2 : Accident in society, 3 : Accident in another location
+        switch ($this->external_accident) {
+            case 1:
+                if (!empty($this->fk_standard)) {
+                    require_once __DIR__ . '/digiriskstandard.class.php';
+                    $digiriskStandard = new DigiriskStandard($this->db);
+                    $digiriskStandard->fetch($this->fk_standard);
+                    $accidentLocation = $digiriskStandard->ref . " - " . $conf->global->MAIN_INFO_SOCIETE_NOM;
+                } else if (!empty($this->fk_element)) {
+                    require_once __DIR__ . '/digiriskelement.class.php';
+                    $digiriskElement  = new DigiriskElement($this->db);
+                    $digiriskElement->fetch($this->fk_element);
+                    $accidentLocation = $digiriskElement->ref . " - " . $digiriskElement->label;
+                }
+                break;
+            case 2:
+                require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
+                $society          = new Societe($this->db);
+                $society->fetch($this->fk_soc);
+                $accidentLocation = $society->ref . " - " . $society->label;
+            case 3:
+                $accidentLocation = (dol_strlen($this->accident_location) > 0 ? $this->accident_location : $langs->trans('NoData'));
+                break;
+        }
+
+        $ret  = parent::getTriggerDescription();
+        $ret .= $userVictim->id > 0 ? $langs->trans('UserVictim') . ' : ' . $userVictim->firstname . $userVictim->lastname . '<br>' : '';
+        $ret .= $langs->trans('UserEmployer') . ' : ' . $userEmployer->firstname . $userEmployer->lastname . '<br>';
+        $ret .= $langs->trans('AccidentLocation') . ' : ' . $accidentLocation  . '<br>';
+        $ret .= $langs->trans('AccidentType') . ' : ' . ($this->accident_type ? $langs->trans('CommutingAccident') : $langs->trans('WorkAccidentStatement')) . '<br>';
+        $ret .= (dol_strlen($this->accident_date) > 0 ? $langs->trans('AccidentDate') . ' : ' . dol_print_date($this->accident_date, 'dayhoursec') . '<br>' : '');
+
+        return $ret;
+    }
+
+    /**
+     * Return banner tab content.
+     * @return array
+     * @throws Exception
+     */
+    public function getBannerTabContent() : array
+    {
+        global $langs;
+
+        $workstopLine      = new AccidentWorkStop($this->db);
+        $accidentLines     = $workstopLine->fetchFromParent($this->id);
+        $totalWorkStopDays = 0;
+
+        if (!empty($accidentLines) && $accidentLines > 0) {
+            foreach ($accidentLines as $accidentLine) {
+                if ($accidentLine->status > 0) {
+                    $totalWorkStopDays += $accidentLine->workstop_days;
+                }
+            }
+            $moreHtmlRef      = $langs->trans('TotalWorkStopDays') . ' : ' . $totalWorkStopDays;
+            $lastaccidentline = end($accidentLines);
+            if ($this->status == Accident::STATUS_LOCKED) {
+                $moreHtmlRef     .= '<br>' . $langs->trans('ReturnWorkDate') . ' : ' . dol_print_date($lastaccidentline->date_end_workstop, 'dayhour');
+            }
+        } else {
+            $moreHtmlRef = $langs->trans('RegisterAccident');
+        }
+        $moreHtmlRef .= '<br>';
+        $moreParams = [];
+
+        return [$moreHtmlRef, $moreParams];
+    }
 }
 
 /**
  *	Class to manage accident workstop.
  *  Saved into database table llx_digiriskdolibarr_accident_workstop
  */
-class AccidentWorkStop extends CommonObjectLine
+class AccidentWorkStop extends SaturneObject
 {
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
+    /**
+     * @var string Module name
+     */
+    public $module = 'digiriskdolibarr';
 
-	/**
-	 * @var string Error string
-	 */
-	public $error;
+    /**
+     * @var string Element type of object
+     */
+    public $element = 'accidentworkstop';
 
-	/**
-	 * @var int The object identifier
-	 */
-	public $id;
+    /**
+     * @var string Name of table without prefix where object is stored
+     */
+    public $table_element = 'digiriskdolibarr_accident_workstop';
 
-	/**
-	 * @var string ID to identify managed object
-	 */
-	public $element = 'accident_workstop';
+    /**
+     * @var string Name of icon for accidentworkstop
+     * Must be a 'fa-xxx' fontawesome code (or 'fa-xxx_fa_color_size')
+     * or 'accidentworkstop@digiriskdolibarr' if picto is file 'img/object_accidentworkstop.png'
+     */
+    public string $picto = 'fontawesome_fa-user-injured_fas_#d35968';
 
-	/**
-	 * @var string Name of table without prefix where object is stored
-	 */
-	public $table_element = 'digiriskdolibarr_accident_workstop';
+    /**
+     * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
+     */
+    public $fields = [
+        'rowid'               => ['type' => 'integer',      'label' => 'TechnicalID',       'enabled' => '1', 'position' => 1,  'notnull' => 1,  'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"],
+        'ref'                 => ['type' => 'varchar(128)', 'label' => 'Ref',               'enabled' => '1', 'position' => 10, 'notnull' => 1,  'visible' => 1, 'noteditable' => '1', 'default' => '(PROV)', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"],
+        'entity'              => ['type' => 'integer',      'label' => 'Entity',            'enabled' => '1', 'position' => 30, 'notnull' => 1,  'visible' => 0,],
+        'date_creation'       => ['type' => 'datetime',     'label' => 'DateCreation',      'enabled' => '1', 'position' => 40, 'notnull' => 1,  'visible' => 0,],
+        'tms'                 => ['type' => 'timestamp',    'label' => 'DateModification',  'enabled' => '1', 'position' => 50, 'notnull' => 0,  'visible' => 0,],
+        'status'              => ['type' => 'smallint',     'label' => 'Status',            'enabled' => '1', 'position' => 60, 'notnull' => 0,  'visible' => 0, 'index' => 0,],
+        'workstop_days'       => ['type' => 'integer',      'label' => 'WorkStopDays',      'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => -1,],
+        'date_start_workstop' => ['type' => 'datetime',     'label' => 'DateStartWorkStop', 'enabled' => '1', 'position' => 80, 'notnull' => 0,  'visible' => 0,],
+        'date_end_workstop'   => ['type' => 'datetime',     'label' => 'DateEndWorkStop',   'enabled' => '1', 'position' => 81, 'notnull' => 0,  'visible' => 0,],
+        'declaration_link'    => ['type' => 'text',         'label' => 'DeclarationLink',   'enabled' => '1', 'position' => 82, 'notnull' => 0,  'visible' => 0,],
+        'fk_accident'         => ['type' => 'integer',      'label' => 'FkAccident',        'enabled' => '1', 'position' => 90, 'notnull' => 1,  'visible' => 0,],
+    ];
 
-	/**
-	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
-	 */
-	public $fields = array(
-		'rowid'               => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => '1', 'position' => 1, 'notnull' => 1, 'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"),
-		'ref'                 => array('type' => 'varchar(128)', 'label' => 'Ref', 'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => 1, 'noteditable' => '1', 'default' => '(PROV)', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"),
-		'entity'              => array('type' => 'integer', 'label' => 'Entity', 'enabled' => '1', 'position' => 30, 'notnull' => 1, 'visible' => 0,),
-		'date_creation'       => array('type' => 'datetime', 'label' => 'DateCreation', 'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => 0,),
-		'tms'                 => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 50, 'notnull' => 0, 'visible' => 0,),
-		'status'              => array('type' => 'smallint', 'label' => 'Status', 'enabled' => '1', 'position' => 60, 'notnull' => 0, 'visible' => 0, 'index' => 0,),
-		'workstop_days'       => array('type' => 'integer', 'label' => 'WorkStopDays', 'enabled' => '1', 'position' => 70, 'notnull' => -1, 'visible' => -1,),
-		'date_start_workstop' => array('type' => 'datetime', 'label' => 'DateStartWorkStop', 'enabled' => '1', 'position' => 80, 'notnull' => 0, 'visible' => 0,),
-		'date_end_workstop'   => array('type' => 'datetime', 'label' => 'DateEndWorkStop', 'enabled' => '1', 'position' => 81, 'notnull' => 0, 'visible' => 0,),
-		'declaration_link'    => array('type' => 'text', 'label' => 'DeclarationLink', 'enabled' => '1', 'position' => 82, 'notnull' => 0, 'visible' => 0,),
-		'fk_accident'         => array('type' => 'integer', 'label' => 'FkAccident', 'enabled' => '1', 'position' => 90, 'notnull' => 1, 'visible' => 0,),
-	);
+    public $workstop_days;
+    public $date_start_workstop;
+    public $date_end_workstop;
+    public $declaration_link;
+    public $fk_accident;
 
-	public $rowid;
-	public $ref;
-	public $entity;
-	public $date_creation;
-	public $tms;
-	public $status;
-	public $workstop_days;
-	public $date_start_workstop;
-	public $date_end_workstop;
-	public $declaration_link;
-	public $fk_accident;
+    /**
+     * Constructor
+     *
+     * @param DoliDB $db Database handler
+     */
+    public function __construct(DoliDB $db)
+    {
+        return parent::__construct($db, $this->module, $this->element);
+    }
 
-	/**
-	 * Constructor
-	 *
-	 * @param DoliDb $db Database handler
-	 */
-	public function __construct(DoliDB $db)
-	{
-		global $conf;
+    /*
+     * Load object in memory from the database
+     *
+     * @param  int       $parent_id Id parent object
+     * @return array|int            <0 if KO, 0 if not found, >0 if OK
+     * @throws Exception
+     */
+    public function fetchFromParent(int $parent_id)
+    {
+        $filter = ['customsql' => 'fk_accident =' . $this->db->escape($parent_id) . ' AND t.status >= 0'];
 
-		$this->db = $db;
+        return $this->fetchAll('', '', 0, 0, $filter);
+    }
 
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
-	}
+    /**
+     * Write information of trigger description
+     *
+     * @return string Description to display in actioncomm->note_private
+     */
+    public function getTriggerDescription(): string
+    {
+        global $langs;
 
-	/**
-	 *    Load invoice line from database
-	 *
-	 * @param int $rowid id of invoice line to get
-	 * @return    int                    <0 if KO, >0 if OK
-	 */
-	public function fetch($rowid)
-	{
-		global $db;
+        $ret  = parent::getTriggerDescription();
+        $ret .= $langs->transnoentities('WorkStopDays') . ' : ' . $this->workstop_days . '<br>';
+        $ret .= $langs->transnoentities('WorkStopDocument') . ' : ' . (!empty($this->declaration_link) ? $this->declaration_link : 'N/A') . '<br>';
+        $ret .= (dol_strlen($this->date_start_workstop) > 0 ? $langs->transnoentities('DateStartWorkStop') . ' : ' . dol_print_date($this->date_start_workstop, 'dayhoursec') . '<br>' : '');
+        $ret .= (dol_strlen($this->date_end_workstop) > 0 ? $langs->transnoentities('DateEndWorkStop') . ' : ' . dol_print_date($this->date_end_workstop, 'dayhoursec') . '<br>' : '');
 
-		$sql  = 'SELECT t.rowid, t.ref, t.date_creation, t.status, t.workstop_days, t.date_start_workstop, t.date_end_workstop, t.declaration_link, t.fk_accident';
-		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_workstop as t';
-		$sql .= ' WHERE t.rowid = ' . $rowid;
-		$sql .= ' AND entity IN (' . getEntity($this->table_element) . ')';
-
-		$result = $db->query($sql);
-		if ($result) {
-			$objp = $db->fetch_object($result);
-
-			$this->id                  = $objp->rowid;
-			$this->ref                 = $objp->ref;
-			$this->date_creation       = $objp->date_creation;
-			$this->status              = $objp->status;
-			$this->workstop_days       = $objp->workstop_days;
-			$this->date_start_workstop = $objp->date_start_workstop;
-			$this->date_end_workstop   = $objp->date_end_workstop;
-			$this->declaration_link    = $objp->declaration_link;
-			$this->fk_accident         = $objp->fk_accident;
-
-			$db->free($result);
-
-			return 1;
-		} else {
-			$this->error = $db->lasterror();
-			return -1;
-		}
-	}
-
-	/**
-	 *    Load accident line line from database
-	 *
-	 * @param int $parent_id
-	 * @param int $limit
-	 * @return array|int  <0 if KO, >0 if OK
-	 */
-	public function fetchFromParent($parent_id = 0, $limit = 0)
-	{
-		global $db;
-		$sql  = 'SELECT t.rowid, t.ref, t.date_creation, t.status, t.workstop_days, t.date_start_workstop, t.date_end_workstop, t.declaration_link';
-		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_workstop as t';
-		if ($parent_id > 0) {
-			$sql .= ' WHERE t.fk_accident = ' . $parent_id;
-		} else {
-			$sql .= ' WHERE 1=1';
-		}
-		$sql .= ' AND entity IN (' . getEntity($this->table_element) . ')';
-
-		$result = $db->query($sql);
-
-		if ($result) {
-			$num = $db->num_rows($result);
-
-			$i = 0;
-			$records = array();
-			while ($i < ($limit ? min($limit, $num) : $num)) {
-				$obj = $db->fetch_object($result);
-
-				$record = new self($db);
-
-				$record->id                  = $obj->rowid;
-				$record->ref                 = $obj->ref;
-				$record->date_creation       = $obj->date_creation;
-				$record->status              = $obj->status;
-				$record->workstop_days       = $obj->workstop_days;
-				$record->date_start_workstop = $obj->date_start_workstop;
-				$record->date_end_workstop   = $obj->date_end_workstop;
-				$record->declaration_link    = $obj->declaration_link;
-				$record->fk_accident         = $obj->fk_accident;
-
-				$records[$record->id] = $record;
-
-				$i++;
-			}
-
-			$db->free($result);
-
-			return $records;
-		} else {
-			$this->error = $db->lasterror();
-			return -1;
-		}
-	}
-
-	/**
-	 *    Insert line into database
-	 *
-	 * @param User $user
-	 * @param bool $notrigger 1 no triggers
-	 * @return        int                                         <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function insert(User $user, $notrigger = false)
-	{
-		global $db, $user, $conf;
-
-		$db->begin();
-		$now = dol_now();
-
-		// Insertion dans base de la ligne
-		$sql  = 'INSERT INTO ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_workstop';
-		$sql .= ' (ref, entity, date_creation, status, workstop_days, date_start_workstop, date_end_workstop, declaration_link, fk_accident';
-		$sql .= ')';
-		$sql .= " VALUES (";
-		$sql .= "'" . $db->escape($this->ref) . "'" . ", ";
-		$sql .= $this->entity . ", ";
-		$sql .= "'" . $db->escape($db->idate($now)) . "'" . ", ";
-		$sql .= $this->status . ", ";
-		$sql .= $this->workstop_days . ", ";
-		$sql .= "'" . $db->escape($db->idate($this->date_start_workstop)) . "'" . ", ";
-		$sql .= "'" . $db->escape($db->idate($this->date_end_workstop)) . "'" . ", ";
-		$sql .= "'" . $this->declaration_link . "'" . ", ";
-		$sql .= $this->fk_accident;
-
-		$sql .= ')';
-
-		dol_syslog(get_class($this) . "::insert", LOG_DEBUG);
-		$resql = $db->query($sql);
-
-		if ($resql) {
-			$this->id    = $db->last_insert_id(MAIN_DB_PREFIX . 'accident_workstop');
-			$this->rowid = $this->id; // For backward compatibility
-
-			$db->commit();
-			// Triggers
-			if ( ! $notrigger) {
-				// Call triggers
-				if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_WORKSTOP_CREATE)) $this->call_trigger(strtoupper(get_class($this)) . '_CREATE', $user);
-				// End call triggers
-			}
-			return $this->id;
-		} else {
-			$this->error = $db->lasterror();
-			$db->rollback();
-			return -2;
-		}
-	}
-
-	/**
-	 *    Update line into database
-	 *
-	 * @param string $user User object
-	 * @param bool $notrigger Disable triggers
-	 * @return        int                    <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function update($user = '', $notrigger = false)
-	{
-		global $user, $db, $conf;
-
-		$db->begin();
-		$sql  = "UPDATE " . MAIN_DB_PREFIX . "digiriskdolibarr_accident_workstop SET";
-		$sql .= " ref='" . $db->escape($this->ref) . "',";
-		$sql .= " status=" . $this->status . ",";
-		$sql .= " workstop_days=" . $this->workstop_days . ",";
-		$sql .= " date_start_workstop='" . $db->escape($db->idate($this->date_start_workstop)) . "',";
-		$sql .= " date_end_workstop='" . $db->escape($db->idate($this->date_end_workstop)) . "',";
-		$sql .= " declaration_link='" . $this->declaration_link . "',";
-		$sql .= " fk_accident=" . $db->escape($this->fk_accident);
-		$sql .= " WHERE rowid = " . $this->id;
-
-		dol_syslog(get_class($this) . "::update", LOG_DEBUG);
-		$resql = $db->query($sql);
-
-		if ($resql) {
-			$db->commit();
-			// Triggers
-			if ( ! $notrigger) {
-				// Call triggers
-				if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_WORKSTOP_MODIFY)) $this->call_trigger(strtoupper(get_class($this)) . '_MODIFY', $user);
-				// End call triggers
-			}
-			return 1;
-		} else {
-			$this->error = $db->error();
-			$db->rollback();
-			return -2;
-		}
-	}
-
-	/**
-	 *    Delete line in database
-	 *
-	 * @param User $user
-	 * @param bool $notrigger
-	 * @return        int                   <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function delete(User $user, $notrigger = false)
-	{
-		global $conf;
-		// Triggers
-		if ( ! $notrigger) {
-			// Call trigger
-			if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_WORKSTOP_DELETE)) $this->call_trigger(strtoupper(get_class($this)) . '_DELETE', $user);
-			// End call triggers
-		}
-		return $this->update($user, true);
-	}
+        return $ret;
+    }
 }
 
 /**
  *	Class to manage accident metadata.
  *  Saved into database table llx_digiriskdolibarr_accident_metadata
  */
-class AccidentMetaData extends CommonObject
+class AccidentMetaData extends SaturneObject
 {
+	/**
+	 * @var string Module name.
+	 */
+	public $module = 'digiriskdolibarr';
+
 	/**
 	 * @var DoliDB Database handler.
 	 */
@@ -1085,8 +1166,7 @@ class AccidentMetaData extends CommonObject
 	public $id;
 
 	/**
-	 * @var int  Does this object support multicompany module ?
-	 * 0=No test on entity, 1=Test with field entity, 'field@table'=Test with link by field@table
+	 * @var string ID to identify managed object.
 	 */
 	public $element = 'accidentmetadata';
 
@@ -1102,57 +1182,53 @@ class AccidentMetaData extends CommonObject
 	public $ismultientitymanaged = 1;
 
 	/**
-	 * @var int  Does object support extrafields ? 0=No, 1=Yes
-	 */
-	public $isextrafieldmanaged = 1;
-
-	/**
 	 * @var string String with name of icon for digiriskelement. Must be the part after the 'object_' into object_digiriskelement.png
 	 */
-	public $picto = 'accident@digiriskdolibarr';
+	public string $picto = 'fontawesome_fa-user-injured_fas_#d35968';
+
 
 	/**
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
 	 */
-	public $fields = array(
-		'rowid'                                => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => '1', 'position' => 1, 'notnull' => 1, 'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"),
-		'entity'                               => array('type' => 'integer', 'label' => 'Entity', 'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => 0,),
-		'date_creation'                        => array('type' => 'datetime', 'label' => 'DateCreation', 'enabled' => '1', 'position' => 20, 'notnull' => 1, 'visible' => 0,),
-		'tms'                                  => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 30, 'notnull' => 0, 'visible' => 0,),
-		'status'                               => array('type' => 'smallint', 'label' => 'Status', 'enabled' => '1', 'position' => 40, 'notnull' => 0, 'visible' => 1, 'index' => 0,),
-		'relative_location'                    => array('type' => 'varchar(255)', 'label' => 'RelativeLocation', 'enabled' => '1', 'position' => 50, 'notnull' => -1, 'visible' => 1,),
-		'victim_activity'                      => array('type' => 'text', 'label' => 'VictimActivity', 'enabled' => '1', 'position' => 60, 'notnull' => -1, 'visible' => 1,),
-		'accident_nature'                      => array('type' => 'text', 'label' => 'AccidentNature', 'enabled' => '1', 'position' => 70, 'notnull' => -1, 'visible' => 1,),
-		'accident_object'                      => array('type' => 'text', 'label' => 'AccidentObject', 'enabled' => '1', 'position' => 80, 'notnull' => -1, 'visible' => 1,),
-		'accident_nature_doubt'                => array('type' => 'text', 'label' => 'AccidentNatureDoubt', 'enabled' => '1', 'position' => 90, 'notnull' => -1, 'visible' => 1,),
-		'accident_nature_doubt_link'           => array('type' => 'url', 'label' => 'AccidentNatureDoubtLink', 'enabled' => '1', 'position' => 100, 'notnull' => -1, 'visible' => 1,),
-		'victim_transported_to'                => array('type' => 'text', 'label' => 'VictimTransportedTo', 'enabled' => '1', 'position' => 110, 'notnull' => -1, 'visible' => 1,),
-		'collateral_victim'                    => array('type' => 'boolean', 'label' => 'CollateralVictim', 'enabled' => '1', 'position' => 120, 'notnull' => -1, 'visible' => 1,),
-		'workhours_morning_date_start'         => array('type' => 'datetime', 'label' => 'WorkHoursMorningDateStart', 'enabled' => '1', 'position' => 130, 'notnull' => -1, 'visible' => 1,),
-		'workhours_morning_date_end'           => array('type' => 'datetime', 'label' => 'WorkHoursMorningDateEnd', 'enabled' => '1', 'position' => 131, 'notnull' => -1, 'visible' => 1,),
-		'workhours_afternoon_date_start'       => array('type' => 'datetime', 'label' => 'WorkHoursAfternoonDateStart', 'enabled' => '1', 'position' => 132, 'notnull' => -1, 'visible' => 1,),
-		'workhours_afternoon_date_end'         => array('type' => 'datetime', 'label' => 'WorkHoursAfternoonDateEnd', 'enabled' => '1', 'position' => 133, 'notnull' => -1, 'visible' => 1,),
-		'accident_noticed'                     => array('type' => 'text', 'label' => 'AccidentNoticed', 'enabled' => '1', 'position' => 140, 'notnull' => -1, 'visible' => 1,),
-		'accident_notice_date'                 => array('type' => 'datetime', 'label' => 'AccidentNoticeDate', 'enabled' => '1', 'position' => 150, 'notnull' => -1, 'visible' => 1,),
-		'accident_notice_by'                   => array('type' => 'text', 'label' => 'AccidentNoticeBy', 'enabled' => '1', 'position' => 160, 'notnull' => -1, 'visible' => 1,),
-		'accident_described_by_victim'         => array('type' => 'boolean', 'label' => 'AccidentDescribedByVictim', 'enabled' => '1', 'position' => 170, 'notnull' => -1, 'visible' => 1,),
-		'registered_in_accident_register'      => array('type' => 'boolean', 'label' => 'RegisteredInAccidentRegister', 'enabled' => '1', 'position' => 180, 'notnull' => -1, 'visible' => 1,),
-		'register_date'                        => array('type' => 'datetime', 'label' => 'RegisterDate', 'enabled' => '1', 'position' => 190, 'notnull' => -1, 'visible' => 1,),
-		'register_number'                      => array('type' => 'varchar(255)', 'label' => 'RegisterNumber', 'enabled' => '1', 'position' => 200, 'notnull' => -1, 'visible' => 1,),
-		'consequence'                          => array('type' => 'text', 'label' => 'Consequence', 'enabled' => '1', 'position' => 210, 'notnull' => -1, 'visible' => 1,),
-		'police_report'                        => array('type' => 'boolean', 'label' => 'PoliceReport', 'enabled' => '1', 'position' => 220, 'notnull' => -1, 'visible' => 1,),
-		'police_report_by'                     => array('type' => 'text', 'label' => 'PoliceReportBy', 'enabled' => '1', 'position' => 230, 'notnull' => -1, 'visible' => 1,),
-		'first_person_noticed_is_witness'      => array('type' => 'text', 'label' => 'FirstPersonNoticedIsWitness', 'enabled' => '1', 'position' => 240, 'notnull' => -1, 'visible' => 1,),
-		'thirdparty_responsibility'            => array('type' => 'boolean', 'label' => 'ThirdPartyResponsability', 'enabled' => '1', 'position' => 250, 'notnull' => -1, 'visible' => 1,),
-		'accident_investigation'               => array('type' => 'boolean', 'label' => 'AccidentInvestigation', 'enabled' => '1', 'position' => 260, 'notnull' => -1, 'visible' => 1,),
-		'accident_investigation_link'          => array('type' => 'url', 'label' => 'AccidentInvestigationLink', 'enabled' => '1', 'position' => 270, 'notnull' => -1, 'visible' => 1,),
-		'cerfa_link'                           => array('type' => 'url', 'label' => 'CerfaLink', 'enabled' => '1', 'position' => 280, 'notnull' => -1, 'visible' => 1,),
-		'json'                                 => array('type' => 'text', 'label' => 'Json', 'enabled' => '1', 'position' => 290, 'notnull' => -1, 'visible' => 1,),
-		'fk_user_witness'                      => array('type' => 'integer', 'label' => 'FirstPersonNoticedIsWitness', 'enabled' => '1', 'position' => 241, 'notnull' => -1, 'visible' => 1,),
-		'fk_soc_responsible'                   => array('type' => 'integer', 'label' => 'FkSocResponsible', 'enabled' => '1', 'position' => 251, 'notnull' => -1, 'visible' => 1,),
-		'fk_soc_responsible_insurance_society' => array('type' => 'integer', 'label' => 'FkSocResponsibleInsuranceSociety', 'enabled' => '1', 'position' => 252, 'notnull' => -1, 'visible' => 1,),
-		'fk_accident'                          => array('type' => 'integer', 'label' => 'FkAccident', 'enabled' => '1', 'position' => 330, 'notnull' => -1, 'visible' => -2,),
-	);
+	public $fields = [
+		'rowid'                                => ['type' => 'integer',      'label' => 'TechnicalID',                      'enabled' => '1', 'position' => 1,   'notnull' => 1,  'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"],
+		'entity'                               => ['type' => 'integer',      'label' => 'Entity',                           'enabled' => '1', 'position' => 10,  'notnull' => 1,  'visible' => 0,],
+		'date_creation'                        => ['type' => 'datetime',     'label' => 'DateCreation',                     'enabled' => '1', 'position' => 20,  'notnull' => 1,  'visible' => 0,],
+		'tms'                                  => ['type' => 'timestamp',    'label' => 'DateModification',                 'enabled' => '1', 'position' => 30,  'notnull' => 0,  'visible' => 0,],
+		'status'                               => ['type' => 'smallint',     'label' => 'Status',                           'enabled' => '1', 'position' => 40,  'notnull' => 0,  'visible' => 1, 'index' => 0,],
+		'relative_location'                    => ['type' => 'varchar(255)', 'label' => 'RelativeLocation',                 'enabled' => '1', 'position' => 50,  'notnull' => -1, 'visible' => 1,],
+		'victim_activity'                      => ['type' => 'text',         'label' => 'VictimActivity',                   'enabled' => '1', 'position' => 60,  'notnull' => -1, 'visible' => 1,],
+		'accident_nature'                      => ['type' => 'text',         'label' => 'AccidentNature',                   'enabled' => '1', 'position' => 70,  'notnull' => -1, 'visible' => 1,],
+		'accident_object'                      => ['type' => 'text',         'label' => 'AccidentObject',                   'enabled' => '1', 'position' => 80,  'notnull' => -1, 'visible' => 1,],
+		'accident_nature_doubt'                => ['type' => 'text',         'label' => 'AccidentNatureDoubt',              'enabled' => '1', 'position' => 90,  'notnull' => -1, 'visible' => 1,],
+		'accident_nature_doubt_link'           => ['type' => 'url',          'label' => 'AccidentNatureDoubtLink',          'enabled' => '1', 'position' => 100, 'notnull' => -1, 'visible' => 1,],
+		'victim_transported_to'                => ['type' => 'text',         'label' => 'VictimTransportedTo',              'enabled' => '1', 'position' => 110, 'notnull' => -1, 'visible' => 1,],
+		'collateral_victim'                    => ['type' => 'boolean',      'label' => 'CollateralVictim',                 'enabled' => '1', 'position' => 120, 'notnull' => -1, 'visible' => 1,],
+		'workhours_morning_date_start'         => ['type' => 'datetime',     'label' => 'WorkHoursMorningDateStart',        'enabled' => '1', 'position' => 130, 'notnull' => -1, 'visible' => 1,],
+		'workhours_morning_date_end'           => ['type' => 'datetime',     'label' => 'WorkHoursMorningDateEnd',          'enabled' => '1', 'position' => 131, 'notnull' => -1, 'visible' => 1,],
+		'workhours_afternoon_date_start'       => ['type' => 'datetime',     'label' => 'WorkHoursAfternoonDateStart',      'enabled' => '1', 'position' => 132, 'notnull' => -1, 'visible' => 1,],
+		'workhours_afternoon_date_end'         => ['type' => 'datetime',     'label' => 'WorkHoursAfternoonDateEnd',        'enabled' => '1', 'position' => 133, 'notnull' => -1, 'visible' => 1,],
+		'accident_noticed'                     => ['type' => 'text',         'label' => 'AccidentNoticed',                  'enabled' => '1', 'position' => 140, 'notnull' => -1, 'visible' => 1,],
+		'accident_notice_date'                 => ['type' => 'datetime',     'label' => 'AccidentNoticeDate',               'enabled' => '1', 'position' => 150, 'notnull' => -1, 'visible' => 1,],
+		'accident_notice_by'                   => ['type' => 'text',         'label' => 'AccidentNoticeBy',                 'enabled' => '1', 'position' => 160, 'notnull' => -1, 'visible' => 1,],
+		'accident_described_by_victim'         => ['type' => 'boolean',      'label' => 'AccidentDescribedByVictim',        'enabled' => '1', 'position' => 170, 'notnull' => -1, 'visible' => 1,],
+		'registered_in_accident_register'      => ['type' => 'boolean',      'label' => 'RegisteredInAccidentRegister',     'enabled' => '1', 'position' => 180, 'notnull' => -1, 'visible' => 1,],
+		'register_date'                        => ['type' => 'datetime',     'label' => 'RegisterDate',                     'enabled' => '1', 'position' => 190, 'notnull' => -1, 'visible' => 1,],
+		'register_number'                      => ['type' => 'varchar(255)', 'label' => 'RegisterNumber',                   'enabled' => '1', 'position' => 200, 'notnull' => -1, 'visible' => 1,],
+		'consequence'                          => ['type' => 'text',         'label' => 'Consequence',                      'enabled' => '1', 'position' => 210, 'notnull' => -1, 'visible' => 1,],
+		'police_report'                        => ['type' => 'boolean',      'label' => 'PoliceReport',                     'enabled' => '1', 'position' => 220, 'notnull' => -1, 'visible' => 1,],
+		'police_report_by'                     => ['type' => 'text',         'label' => 'PoliceReportBy',                   'enabled' => '1', 'position' => 230, 'notnull' => -1, 'visible' => 1,],
+		'first_person_noticed_is_witness'      => ['type' => 'text',         'label' => 'FirstPersonNoticedIsWitness',      'enabled' => '1', 'position' => 240, 'notnull' => -1, 'visible' => 1,],
+		'thirdparty_responsibility'            => ['type' => 'boolean',      'label' => 'ThirdPartyResponsability',         'enabled' => '1', 'position' => 250, 'notnull' => -1, 'visible' => 1,],
+		'accident_investigation'               => ['type' => 'boolean',      'label' => 'AccidentInvestigation',            'enabled' => '1', 'position' => 260, 'notnull' => -1, 'visible' => 1,],
+		'accident_investigation_link'          => ['type' => 'url',          'label' => 'AccidentInvestigationLink',        'enabled' => '1', 'position' => 270, 'notnull' => -1, 'visible' => 1,],
+		'cerfa_link'                           => ['type' => 'url',          'label' => 'CerfaLink',                        'enabled' => '1', 'position' => 280, 'notnull' => -1, 'visible' => 1,],
+		'json'                                 => ['type' => 'text',         'label' => 'Json',                             'enabled' => '1', 'position' => 290, 'notnull' => -1, 'visible' => 1,],
+		'fk_user_witness'                      => ['type' => 'integer',      'label' => 'FirstPersonNoticedIsWitness',      'enabled' => '1', 'position' => 241, 'notnull' => -1, 'visible' => 1,],
+		'fk_soc_responsible'                   => ['type' => 'integer',      'label' => 'FkSocResponsible',                 'enabled' => '1', 'position' => 251, 'notnull' => -1, 'visible' => 1,],
+		'fk_soc_responsible_insurance_society' => ['type' => 'integer',      'label' => 'FkSocResponsibleInsuranceSociety', 'enabled' => '1', 'position' => 252, 'notnull' => -1, 'visible' => 1,],
+		'fk_accident'                          => ['type' => 'integer',      'label' => 'FkAccident',                       'enabled' => '1', 'position' => 330, 'notnull' => -1, 'visible' => -2,],
+	];
 
 	public $rowid;
 	public $entity;
@@ -1195,83 +1271,50 @@ class AccidentMetaData extends CommonObject
 	/**
 	 * Constructor
 	 *
-	 * @param DoliDb $db Database handler
+	 * @param DoliDB $db Database handler
 	 */
 	public function __construct(DoliDB $db)
 	{
-		global $conf, $langs;
-
-		$this->db = $db;
-
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
-
-		// Unset fields that are disabled
-		foreach ($this->fields as $key => $val) {
-			if (isset($val['enabled']) && empty($val['enabled'])) {
-				unset($this->fields[$key]);
-			}
-		}
-
-		// Translate some data of arrayofkeyval
-		if (is_object($langs)) {
-			foreach ($this->fields as $key => $val) {
-				if (is_array($val['arrayofkeyval'])) {
-					foreach ($val['arrayofkeyval'] as $key2 => $val2) {
-						$this->fields[$key]['arrayofkeyval'][$key2] = $langs->trans($val2);
-					}
-				}
-			}
-		}
+		return parent::__construct($db, $this->module, $this->element);
 	}
 
-	/**
-	 * Create object into database
-	 *
-	 * @param User $user User that creates
-	 * @param bool $notrigger false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, Id of created object if OK
-	 * @throws Exception
-	 */
-	public function create(User $user, $notrigger = false)
-	{
-		$result = $this->createCommon($user, $notrigger);
+    /**
+     * Create object into database
+     *
+     * @param  User        $user      User that creates
+     * @param  int<0,1>    $noTrigger 0 = launch triggers after, 1 = disable triggers
+     * @return int<-1,max>            Return integer 0 < if KO, ID of created object if OK
+     */
+    public function create(User $user, int $noTrigger = 0): int
+    {
+        $result = $this->createCommon($user, $noTrigger);
 
-		if ($result > 0) {
-			$sql                                                                              = "UPDATE " . MAIN_DB_PREFIX . "$this->table_element";
-			$sql                                                                             .= " SET status = 0";
-			if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) $sql .= ' WHERE entity IN (' . getEntity($this->table_element) . ')';
-			else $sql                                                                        .= ' WHERE 1 = 1';
-			$sql                                                                             .= " AND fk_accident = " . $this->fk_accident;
-			$sql                                                                             .= " AND rowid != " . $result;
+        if ($result > 0) {
+            $sql                                                                              = "UPDATE " . MAIN_DB_PREFIX . "$this->table_element";
+            $sql                                                                             .= " SET status = 0";
+            if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) $sql .= ' WHERE entity IN (' . getEntity($this->table_element) . ')';
+            else $sql                                                                        .= ' WHERE 1 = 1';
+            $sql                                                                             .= " AND fk_accident = " . $this->fk_accident;
+            $sql                                                                             .= " AND rowid != " . $result;
 
-			dol_syslog("accidentmetadata.class::create", LOG_DEBUG);
-			$this->db->query($sql);
-		}
+            $this->db->query($sql);
+        }
 
-		return $result;
-	}
-
-	/**
-	 * Load object in memory from the database
-	 *
-	 * @param	int    $id				Id object
-	 * @param	string $ref				Ref
-	 * @param	string	$morewhere		More SQL filters (' AND ...')
-	 * @return 	int         			<0 if KO, 0 if not found, >0 if OK
-	 */
-	public function fetch($id, $ref = null, $morewhere = '')
-	{
-		return $this->fetchCommon($id, $ref, $morewhere);
-	}
+        return $result;
+    }
 }
 
 /**
  *	Class to manage accident lesion.
  *  Saved into database table llx_digiriskdolibarr_accident_lesion
  */
-class AccidentLesion extends CommonObjectLine
+class AccidentLesion extends SaturneObject
 {
+	/**
+	 * @var string Module name.
+	 */
+	public $module = 'digiriskdolibarr';
+
 	/**
 	 * @var DoliDB Database handler.
 	 */
@@ -1290,26 +1333,38 @@ class AccidentLesion extends CommonObjectLine
 	/**
 	 * @var string ID to identify managed object
 	 */
-	public $element = 'accident_lesion';
+	public $element = 'accidentlesion';
 
 	/**
 	 * @var string Name of table without prefix where object is stored
 	 */
 	public $table_element = 'digiriskdolibarr_accident_lesion';
 
+    /**
+     * @var int  Does object support extrafields ? 0=No, 1=Yes
+     */
+    public $isextrafieldmanaged = 0;
+
 	/**
+	 * @var string String with name of icon for digiriskelement. Must be the part after the 'object_' into object_digiriskelement.png
+	 */
+	public string $picto = 'fontawesome_fa-user-injured_fas_#d35968';
+
+    const STATUS_DELETED   = -1;
+
+    /**
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
 	 */
-	public $fields = array(
-		'rowid'               => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => '1', 'position' => 1, 'notnull' => 1, 'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"),
-		'ref'                 => array('type' => 'varchar(128)', 'label' => 'Ref', 'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => 1, 'noteditable' => '1', 'default' => '(PROV)', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"),
-		'entity'              => array('type' => 'integer', 'label' => 'Entity', 'enabled' => '1', 'position' => 30, 'notnull' => 1, 'visible' => 0,),
-		'date_creation'       => array('type' => 'datetime', 'label' => 'DateCreation', 'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => 0,),
-		'tms'                 => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 50, 'notnull' => 0, 'visible' => 0,),
-		'lesion_localization' => array('type' => 'text', 'label' => 'LesionLocalization', 'enabled' => '1', 'position' => 60, 'notnull' => -1, 'visible' => 1,),
-		'lesion_nature'       => array('type' => 'text', 'label' => 'LesionNature', 'enabled' => '1', 'position' => 70, 'notnull' => -1, 'visible' => 1,),
-		'fk_accident'         => array('type' => 'integer', 'label' => 'FkAccident', 'enabled' => '1', 'position' => 80, 'notnull' => 1, 'visible' => 0,),
-	);
+	public $fields = [
+		'rowid'               => ['type' => 'integer',      'label' => 'TechnicalID',       'enabled' => '1',  'position' => 1,  'notnull' => 1,  'visible' => 0, 'noteditable' => '1', 'index' => 1, 'comment' => "Id"],
+		'ref'                 => ['type' => 'varchar(128)', 'label' => 'Ref',                'enabled' => '1', 'position' => 10, 'notnull' => 1,  'visible' => 1, 'noteditable' => '1', 'default' => '(PROV)', 'index' => 1, 'searchall' => 1, 'showoncombobox' => '1', 'comment' => "Reference of object"],
+		'entity'              => ['type' => 'integer',      'label' => 'Entity',             'enabled' => '1', 'position' => 30, 'notnull' => 1,  'visible' => 0,],
+		'date_creation'       => ['type' => 'datetime',     'label' => 'DateCreation',       'enabled' => '1', 'position' => 40, 'notnull' => 1,  'visible' => 0,],
+		'tms'                 => ['type' => 'timestamp',    'label' => 'DateModification',   'enabled' => '1', 'position' => 50, 'notnull' => 0,  'visible' => 0,],
+		'lesion_localization' => ['type' => 'text',         'label' => 'LesionLocalization', 'enabled' => '1', 'position' => 60, 'notnull' => -1, 'visible' => 1,],
+		'lesion_nature'       => ['type' => 'text',         'label' => 'LesionNature',       'enabled' => '1', 'position' => 70, 'notnull' => -1, 'visible' => 1,],
+		'fk_accident'         => ['type' => 'integer',      'label' => 'FkAccident',         'enabled' => '1', 'position' => 80, 'notnull' => 1,  'visible' => 0,],
+	];
 
 	public $rowid;
 	public $ref;
@@ -1323,364 +1378,26 @@ class AccidentLesion extends CommonObjectLine
 	/**
 	 * Constructor
 	 *
-	 * @param DoliDb $db Database handler
+	 * @param DoliDB $db Database handler
 	 */
 	public function __construct(DoliDB $db)
 	{
-		global $conf;
-
-		$this->db = $db;
-
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
+		return parent::__construct($db, $this->module, $this->element);
 	}
 
-	/**
-	 *    Load accident lesion from database
-	 *
-	 * @param int $rowid id of accident lesion to get
-	 * @return    int                    <0 if KO, >0 if OK
-	 */
-	public function fetch($rowid)
-	{
-		global $db;
+    /**
+     * Write information of trigger description
+     *
+     * @return string Description to display in actioncomm->note_private
+     */
+    public function getTriggerDescription(): string
+    {
+        global $langs;
 
-		$sql  = 'SELECT t.rowid, t.ref, t.date_creation, t.lesion_localization, t.lesion_nature, t.fk_accident';
-		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_lesion as t';
-		$sql .= ' WHERE t.rowid = ' . $rowid;
-		$sql .= ' AND entity IN (' . getEntity($this->table_element) . ')';
+        $ret  = parent::getTriggerDescription();
+        $ret .= $langs->transnoentities('LesionLocalization') . ' : ' . $this->lesion_localization . '<br>';
+        $ret .= $langs->transnoentities('LesionNature') . ' : ' . $this->lesion_nature . '<br>';
 
-		$result = $db->query($sql);
-		if ($result) {
-			$objp = $db->fetch_object($result);
-
-			$this->id                  = $objp->rowid;
-			$this->ref                 = $objp->ref;
-			$this->date_creation       = $objp->date_creation;
-			$this->lesion_localization = $objp->lesion_localization;
-			$this->lesion_nature       = $objp->lesion_nature;
-			$this->fk_accident         = $objp->fk_accident;
-
-			$db->free($result);
-
-			return 1;
-		} else {
-			$this->error = $db->lasterror();
-			return -1;
-		}
-	}
-
-	/**
-	 *  Load accident lesion from database
-	 *
-	 * 	@param  int       $parent_id
-	 *	@param  int       $limit
-	 * 	@return array|int             <0 if KO, >0 if OK
-	 */
-	public function fetchFromParent($parent_id = 0, $limit = 0)
-	{
-		global $db;
-		$sql  = 'SELECT t.rowid, t.ref, t.date_creation, t.lesion_localization, t.lesion_nature';
-		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_lesion as t';
-		if ($parent_id > 0) {
-			$sql .= ' WHERE t.fk_accident = ' . $parent_id;
-		} else {
-			$sql .= ' WHERE 1=1';
-		}
-		$sql .= ' AND entity IN (' . getEntity($this->table_element) . ')';
-
-		$result = $db->query($sql);
-
-		if ($result) {
-			$num = $db->num_rows($result);
-
-			$i = 0;
-			$records = array();
-			while ($i < ($limit ? min($limit, $num) : $num)) {
-				$obj = $db->fetch_object($result);
-
-				$record = new self($db);
-
-				$record->id                  = $obj->rowid;
-				$record->ref                 = $obj->ref;
-				$record->date_creation       = $obj->date_creation;
-				$record->lesion_localization = $obj->lesion_localization;
-				$record->lesion_nature       = $obj->lesion_nature;
-				$record->fk_accident         = $obj->fk_accident;
-
-				$records[$record->id] = $record;
-
-				$i++;
-			}
-
-
-			$db->free($result);
-
-			return $records;
-		} else {
-			$this->error = $db->lasterror();
-			return -1;
-		}
-	}
-
-	/**
-	 *    Insert line into database
-	 *
-	 * @param User $user
-	 * @param bool $notrigger 1 no triggers
-	 * @return        int                                         <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function insert(User $user, $notrigger = false)
-	{
-		global $db, $user, $conf;
-
-		$db->begin();
-		$now = dol_now();
-
-		// Insertion dans base de la line
-		$sql  = 'INSERT INTO ' . MAIN_DB_PREFIX . 'digiriskdolibarr_accident_lesion';
-		$sql .= ' (ref, entity, date_creation, lesion_localization, lesion_nature, fk_accident';
-		$sql .= ')';
-		$sql .= " VALUES (";
-		$sql .= "'" . $db->escape($this->ref) . "'" . ", ";
-		$sql .= $this->entity . ", ";
-		$sql .= "'" . $db->escape($db->idate($now)) . "'" . ", ";
-		$sql .= "'" . $db->escape($this->lesion_localization) . "'" . ", ";
-		$sql .= "'" . $db->escape($this->lesion_nature) . "'" . ", ";
-		$sql .= $this->fk_accident;
-
-		$sql .= ')';
-
-		dol_syslog(get_class($this) . "::insert", LOG_DEBUG);
-		$resql = $db->query($sql);
-
-		if ($resql) {
-			$this->id    = $db->last_insert_id(MAIN_DB_PREFIX . 'accident_lesion');
-			$this->rowid = $this->id; // For backward compatibility
-
-			$db->commit();
-			// Triggers
-			if ( ! $notrigger) {
-				// Call triggers
-				if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_LESION_CREATE)) $this->call_trigger(strtoupper(get_class($this)) . '_CREATE', $user);
-				// End call triggers
-			}
-			return $this->id;
-		} else {
-			$this->error = $db->lasterror();
-			$db->rollback();
-			return -2;
-		}
-	}
-
-	/**
-	 *    Update line into database
-	 *
-	 * @param string $user User object
-	 * @param bool $notrigger Disable triggers
-	 * @return        int                    <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function update($user = '', $notrigger = false)
-	{
-		global $user, $db, $conf;
-
-		$db->begin();
-		$sql  = "UPDATE " . MAIN_DB_PREFIX . "digiriskdolibarr_accident_lesion SET";
-		$sql .= " ref='" . $db->escape($this->ref) . "',";
-		$sql .= " lesion_localization='" . $db->escape($this->lesion_localization) . "',";
-		$sql .= " lesion_nature='" . $db->escape($this->lesion_nature) . "',";
-		$sql .= " fk_accident=" . $db->escape($this->fk_accident);
-		$sql .= " WHERE rowid = " . $this->id;
-
-		dol_syslog(get_class($this) . "::update", LOG_DEBUG);
-		$resql = $db->query($sql);
-
-		if ($resql) {
-			$db->commit();
-			// Triggers
-			if ( ! $notrigger) {
-				// Call triggers
-				if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_LESION_MODIFY)) $this->call_trigger(strtoupper(get_class($this)) . '_MODIFY', $user);
-				// End call triggers
-			}
-			return 1;
-		} else {
-			$this->error = $db->error();
-			$db->rollback();
-			return -2;
-		}
-	}
-
-	/**
-	 *    Delete line in database
-	 *
-	 * @param User $user
-	 * @param bool $notrigger
-	 * @return        int                   <0 if KO, >0 if OK
-	 * @throws Exception
-	 */
-	public function delete(User $user, $notrigger = false)
-	{
-		global $user, $db, $conf;
-
-		$db->begin();
-
-		$sql = "DELETE FROM " . MAIN_DB_PREFIX . "digiriskdolibarr_accident_lesion WHERE rowid = " . $this->id;
-		dol_syslog(get_class($this) . "::delete", LOG_DEBUG);
-		if ($db->query($sql)) {
-			$db->commit();
-			// Triggers
-			if ( ! $notrigger) {
-				// Call trigger
-				if (!empty($conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_ACCIDENT_LESION_DELETE)) $this->call_trigger(strtoupper(get_class($this)) . '_DELETE', $user);
-				// End call triggers
-			}
-			return 1;
-		} else {
-			$this->error = $db->error() . " sql=" . $sql;
-			$db->rollback();
-			return -1;
-		}
-	}
-}
-
-/**
- *	Class to manage accident signature.
- *  Saved into database table llx_digiriskdolibarr_object_signature
- */
-class AccidentSignature extends DigiriskSignature
-{
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
-
-	/**
-	 * @var string[] Array of error strings
-	 */
-	public $errors = array();
-
-	/**
-	 * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management.
-	 */
-
-	public $object_type = 'accident';
-
-	/**
-	 * Constructor
-	 *
-	 * @param DoliDb $db Database handler
-	 */
-	public function __construct(DoliDB $db)
-	{
-		global $conf, $langs;
-
-		$this->db = $db;
-
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
-
-		// Unset fields that are disabled
-		foreach ($this->fields as $key => $val) {
-			if (isset($val['enabled']) && empty($val['enabled'])) {
-				unset($this->fields[$key]);
-			}
-		}
-
-		// Translate some data of arrayofkeyval
-		if (is_object($langs)) {
-			foreach ($this->fields as $key => $val) {
-				if (is_array($val['arrayofkeyval'])) {
-					foreach ($val['arrayofkeyval'] as $key2 => $val2) {
-						$this->fields[$key]['arrayofkeyval'][$key2] = $langs->trans($val2);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Load list of objects in memory from the database.
-	 *
-	 * @param string $sortorder Sort Order
-	 * @param string $sortfield Sort field
-	 * @param int $limit limit
-	 * @param int $offset Offset
-	 * @param array $filter Filter array. Example array('field'=>'valueforlike', 'customurl'=>...)
-	 * @param string $filtermode Filter mode (AND or OR)
-	 * @param string $old_table_element
-	 * @return array|int                 int <0 if KO, array of pages if OK
-	 * @throws Exception
-	 */
-	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND', $old_table_element = '')
-	{
-		dol_syslog(__METHOD__, LOG_DEBUG);
-
-		$records = array();
-		$sql     = 'SELECT ';
-		$sql    .= $this->getFieldList();
-		if (dol_strlen($old_table_element)) {
-			$sql .= ' FROM ' . MAIN_DB_PREFIX . $old_table_element;
-		} else {
-			$sql .= ' FROM ' . MAIN_DB_PREFIX . $this->table_element;
-		}
-		if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) $sql .= ' WHERE entity IN (' . getEntity($this->table_element) . ')';
-		else $sql                                                                        .= ' WHERE 1 = 1';
-		$sql                                                                             .= ' AND object_type = "' . $this->object_type . '"';
-
-		// Manage filter
-		$sqlwhere = array();
-		if (count($filter) > 0) {
-			foreach ($filter as $key => $value) {
-				if ($key == 'rowid') {
-					$sqlwhere[] = $key . '=' . $value;
-				} elseif (in_array($this->fields[$key]['type'], array('date', 'datetime', 'timestamp'))) {
-					$sqlwhere[] = $key . ' = \'' . $this->db->idate($value) . '\'';
-				} elseif ($key == 'customsql') {
-					$sqlwhere[] = $value;
-				} elseif (strpos($value, '%') === false) {
-					$sqlwhere[] = $key . ' IN (' . $this->db->sanitize($this->db->escape($value)) . ')';
-				} else {
-					$sqlwhere[] = $key . ' LIKE \'%' . $this->db->escape($value) . '%\'';
-				}
-			}
-		}
-		if (count($sqlwhere) > 0) {
-			$sql .= ' AND (' . implode(' ' . $filtermode . ' ', $sqlwhere) . ')';
-		}
-
-		if ( ! empty($sortfield)) {
-			$sql .= $this->db->order($sortfield, $sortorder);
-		}
-		if ( ! empty($limit)) {
-			$sql .= ' ' . $this->db->plimit($limit, $offset);
-		}
-
-		$resql = $this->db->query($sql);
-
-		if ($resql) {
-			$num = $this->db->num_rows($resql);
-			$i   = 0;
-			while ($i < ($limit ? min($limit, $num) : $num)) {
-				$obj = $this->db->fetch_object($resql);
-
-				$record = new self($this->db);
-				$record->setVarsFromFetchObj($obj);
-
-				$records[$record->id] = $record;
-
-				$i++;
-			}
-			$this->db->free($resql);
-
-			return $records;
-		} else {
-			$this->errors[] = 'Error ' . $this->db->lasterror();
-			dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
-
-			return -1;
-		}
-	}
+        return $ret;
+    }
 }

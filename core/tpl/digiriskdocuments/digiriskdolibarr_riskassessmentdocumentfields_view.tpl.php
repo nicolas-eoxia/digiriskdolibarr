@@ -36,6 +36,8 @@ if ( ! is_object($form)) $form = new Form($db);
 
 // Date d'audit
 if ( $action == "edit" && $permissiontoadd ) {
+    require_once DOL_DOCUMENT_ROOT . '/core/class/doleditor.class.php';
+
 	print '<tr>';
 	print '<td class="titlefield"><label for="AuditStartDate">' . $langs->trans("AuditStartDate") . '</label></td><td colspan="2">';
 	print $form->selectDate($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_AUDIT_START_DATE, 'AuditStartDate', '', '', '', "edit", 1, 1);
@@ -47,10 +49,10 @@ if ( $action == "edit" && $permissiontoadd ) {
 	print '</td></tr>';
 
 	// Destinataire
-
+	$userRecipient = json_decode($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_RECIPIENT);
 	print '<tr>';
 	print '<td class="titlefield"><label for="Recipient">' . $langs->trans("Recipient") . '</label></td><td colspan="2">';
-	print $form->select_dolusers($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_RECIPIENT, 'Recipient', 0, null, 0, '', '', 0, 0, 0, '', 0, '', '', 0, 0);
+	print $form->select_dolusers($userRecipient, 'Recipient', 0, null, 0, '', '', 0, 0, 0, '', 0, '', '', 0, 0, true);
 	print '</td></tr>';
 
 	// Méthodologie
@@ -81,24 +83,12 @@ if ( $action == "edit" && $permissiontoadd ) {
 	print '<tr>';
 	print '<td class="titlefield">' . $form->editfieldkey($langs->trans("SitePlans"), 'SitePlans', '', $object, 0) . '</td>';
 	print '<td>';
-	$filearray = dol_dir_list($conf->digiriskdolibarr->multidir_output[$conf->entity] . '/riskassessmentdocument/', "files", 0, '', '(\.odt|\.zip)', 'date', 'asc', 1);
-	if (count($filearray)) : ?>
-		<?php
-		$file = array_shift($filearray);
-		$thumb_name               = getThumbName($file['name']);
-		?>
-		<span class="">
-				<?php print '<img class="" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=digiriskdolibarr&entity=' . $conf->entity . '&file=' . urlencode('/riskassessmentdocument/thumbs/' . $thumb_name) . '" >'; ?>
-		</span>
-	<?php else : ?>
-		<?php $nophoto = DOL_URL_ROOT . '/public/theme/common/nophoto.png'; ?>
-		<span class="">
-			<img class="" alt="No photo" src="<?php echo $nophoto ?>">
-		</span>
-	<?php endif;
-	print '<input class="flat" type="file" name="userfile[]" id="SitePlans" />';
+    print saturne_show_medias_linked('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/riskassessmentdocument/siteplans', 'small', '', 0, 0, 0, 200, 200, 0, 0, 0, 'riskassessmentdocument/siteplans', null, '', 0, 0);
+	print '<input class="flat" type="file" name="userfile[]" accept="image/*" id="SitePlans" />';
 	print '</td></tr>';
 } else {
+    $userTmp = new User($db);
+
 	print '<tr>';
 	print '<td class="titlefield">' . $langs->trans("AuditStartDate") . '</td><td colspan="2">';
 	print dol_print_date($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_AUDIT_START_DATE, '%d/%m/%Y');
@@ -112,8 +102,13 @@ if ( $action == "edit" && $permissiontoadd ) {
 	// Destinataire
 	print '<tr>';
 	print '<td class="titlefield">' . $langs->trans("Recipient") . '</td><td colspan="2">';
-	$user->fetch($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_RECIPIENT);
-	print $user->lastname . ' ' . $user->firstname;
+	$recipients = json_decode($conf->global->DIGIRISKDOLIBARR_RISKASSESSMENTDOCUMENT_RECIPIENT);
+	if (is_array($recipients) && !empty($recipients)) {
+        foreach ($recipients as $recipientId) {
+            $userTmp->fetch($recipientId);
+            print $userTmp->getNomUrl(1) . '<br>';
+        }
+    }
 	print '</td></tr>';
 
 	// Méthodologie
@@ -141,22 +136,8 @@ if ( $action == "edit" && $permissiontoadd ) {
 	print '<tr>';
 	print '<td class="titlefield">' . $langs->trans("SitePlans") . '</td>';
 	print '<td>';
-	$filearray = dol_dir_list($conf->digiriskdolibarr->multidir_output[$conf->entity] . '/riskassessmentdocument/', "files", 0, '', '(\.odt|\.zip)', 'date', 'asc', 1);
-	if (count($filearray)) : ?>
-		<?php
-		$file = array_shift($filearray);
-		$thumb_name               = getThumbName($file['name']);
-		?>
-		<span class="">
-			<?php print '<img class="" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=digiriskdolibarr&entity=' . $conf->entity . '&file=' . urlencode('/riskassessmentdocument/thumbs/' . $thumb_name) . '" >'; ?>
-		</span>
-	<?php else : ?>
-		<?php $nophoto = DOL_URL_ROOT . '/public/theme/common/nophoto.png'; ?>
-		<span class="">
-			<img class="" alt="No photo" src="<?php echo $nophoto ?>">
-		</span>
-	<?php endif; ?>
-	<?php print '</td></tr>';
+    print saturne_show_medias_linked('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/riskassessmentdocument/siteplans', 'small', '', 0, 0, 0, 100, 100, 0, 0, 0, 'riskassessmentdocument/siteplans', null, '', 0, 0);
+    print '</td></tr>';
 }
 
 ?>

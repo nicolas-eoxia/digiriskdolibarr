@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,35 +21,27 @@
  *		\brief      List page for risk
  */
 
-// Load Dolibarr environment
-$res = 0;
-// Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)
-if ( ! $res && ! empty($_SERVER["CONTEXT_DOCUMENT_ROOT"])) $res = @include $_SERVER["CONTEXT_DOCUMENT_ROOT"] . "/main.inc.php";
-// Try main.inc.php into web root detected using web root calculated from SCRIPT_FILENAME
-$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME']; $tmp2 = realpath(__FILE__); $i = strlen($tmp) - 1; $j = strlen($tmp2) - 1;
-while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) { $i--; $j--; }
-if ( ! $res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1)) . "/main.inc.php")) $res          = @include substr($tmp, 0, ($i + 1)) . "/main.inc.php";
-if ( ! $res && $i > 0 && file_exists(dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php")) $res = @include dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php";
-// Try main.inc.php using relative path
-if ( ! $res && file_exists("../../main.inc.php")) $res       = @include "../../main.inc.php";
-if ( ! $res && file_exists("../../../main.inc.php")) $res    = @include "../../../main.inc.php";
-if ( ! $res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
-if ( ! $res) die("Include of main fails");
+// Load DigiriskDolibarr environment
+if (file_exists('../digiriskdolibarr.main.inc.php')) {
+    require_once __DIR__ . '/../digiriskdolibarr.main.inc.php';
+} elseif (file_exists('../../digiriskdolibarr.main.inc.php')) {
+    require_once __DIR__ . '/../../digiriskdolibarr.main.inc.php';
+} else {
+    die('Include of digiriskdolibarr main fails');
+}
 
-global $langs, $user, $conf, $db, $hookmanager;
+global $conf, $db, $hookmanager, $langs, $mc, $user;
 
-$projectRefClass = $conf->global->PROJECT_ADDON;
-$taskRefClass    = $conf->global->PROJECT_TASK_ADDON;
 
+// Load Dolibarr libraries
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmdirectory.class.php';
 require_once DOL_DOCUMENT_ROOT . '/projet/class/project.class.php';
-require_once DOL_DOCUMENT_ROOT . '/core/modules/project/' . $projectRefClass . '.php';
-require_once DOL_DOCUMENT_ROOT . '/core/modules/project/task/' . $taskRefClass . '.php';
 
+// Load DigiriskDolibarr libraries
 require_once './../../class/digiriskelement.class.php';
 require_once './../../class/digiriskstandard.class.php';
 require_once './../../class/riskanalysis/risk.class.php';
@@ -59,28 +51,42 @@ require_once './../../core/modules/digiriskdolibarr/riskanalysis/risk/mod_risk_s
 require_once './../../core/modules/digiriskdolibarr/riskanalysis/riskassessment/mod_riskassessment_standard.php';
 require_once './../../lib/digiriskdolibarr_digiriskstandard.lib.php';
 require_once './../../lib/digiriskdolibarr_function.lib.php';
-require_once __DIR__ . '/../../core/tpl/digirisk_security_checks.php';
-
-$permtoupload = $user->rights->ecm->upload;
+if (isModEnabled('categorie')) {
+    require_once DOL_DOCUMENT_ROOT.'/core/class/html.formcategory.class.php';
+    require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
+}
 
 // Load translation files required by the page
-$langs->loadLangs(array("digiriskdolibarr@digiriskdolibarr", "other"));
+saturne_load_langs(['other']);
 
 // Get parameters
 $id          = GETPOST('id', 'int');
 $action      = GETPOST('action', 'aZ09');
+$subaction   = GETPOST('subaction', 'aZ09');
 $massaction  = GETPOST('massaction', 'alpha'); // The bulk action (combo box choice into lists)
-$confirm     = GETPOST('confirm', 'alpha');
 $cancel      = GETPOST('cancel', 'aZ09');
-$contextpage = GETPOST('contextpage', 'aZ') ? GETPOST('contextpage', 'aZ') : 'risklist'; // To manage different context of search
 $backtopage  = GETPOST('backtopage', 'alpha');
-$toselect    = GETPOST('toselect', 'array'); // Array of ids of elements selected into a list
 $limit       = GETPOST('limit', 'int') ? GETPOST('limit', 'int') : $conf->liste_limit;
 $sortfield   = GETPOST('sortfield', 'alpha');
 $sortorder   = GETPOST('sortorder', 'alpha');
+$riskType    = GETPOSTISSET('risk_type') ? GETPOST('risk_type') : 'risk';
 $page        = GETPOSTISSET('pageplusone') ? (GETPOST('pageplusone') - 1) : GETPOST("page", 'int');
 $page        = is_numeric($page) ? $page : 0;
 $page        = $page == -1 ? 0 : $page;
+
+// Get list parameters
+$toselect                                   = [];
+[$confirm, $contextpage, $optioncss, $mode] = ['', '', '', ''];
+$listParameters                             = saturne_load_list_parameters(basename(dirname(__FILE__)));
+foreach ($listParameters as $listParameterKey => $listParameter) {
+    $$listParameterKey = $listParameter;
+}
+
+if (isModEnabled('categorie')) {
+    $search_category_array = GETPOST('search_category_risk_list', 'array');
+}
+
+$onPhone = $conf->browser->layout == 'phone';
 
 // Initialize technical objects
 $object           = new DigiriskStandard($db);
@@ -88,12 +94,17 @@ $risk             = new Risk($db);
 $evaluation       = new RiskAssessment($db);
 $ecmdir           = new EcmDirectory($db);
 $project          = new Project($db);
-$task             = new DigiriskTask($db);
+$task             = new SaturneTask($db);
 $extrafields      = new ExtraFields($db);
-$refRiskMod       = new $conf->global->DIGIRISKDOLIBARR_RISK_ADDON();
-$refEvaluationMod = new $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON();
-$refProjectMod    = new $projectRefClass();
-$refTaskMod       = new $taskRefClass();
+
+$numberingModuleName = [
+    'riskanalysis/' . $risk->element       => $conf->global->DIGIRISKDOLIBARR_RISK_ADDON,
+    'riskanalysis/' . $evaluation->element => $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON,
+    $project->element                      => $conf->global->PROJECT_ADDON,
+    'project/task'                         => $conf->global->PROJECT_TASK_ADDON,
+];
+
+list($refRiskMod, $refEvaluationMod, $refProjectMod, $refTaskMod) = saturne_require_objects_mod($numberingModuleName, $moduleNameLowerCase);
 
 $object->fetch($conf->global->DIGIRISKDOLIBARR_ACTIVE_STANDARD);
 $hookmanager->initHooks(array('risklist', 'globalcard')); // Note that conf->hooks_modules contains array
@@ -105,7 +116,7 @@ $search_array_options = $extrafields->getOptionalsFromPost($risk->table_element,
 // Default sort order (if not yet defined by previous GETPOST)
 if ( ! $sortfield) $sortfield = $conf->global->DIGIRISKDOLIBARR_SORT_LISTINGS_BY_COTATION ? "evaluation.cotation" : "r." . key($risk->fields);; // Set here default search field. By default 1st field in definition.
 if ( ! $sortorder) $sortorder         = $conf->global->DIGIRISKDOLIBARR_SORT_LISTINGS_BY_COTATION ? "DESC" : "ASC" ;
-if ( ! $evalsortfield) $evalsortfield = "evaluation." . key($evaluation->fields);
+if (!isset($evalsortfield) || !$evalsortfield) $evalsortfield = "evaluation." . key($evaluation->fields);
 
 $offset   = $limit * $page;
 $pageprev = $page - 1;
@@ -115,7 +126,7 @@ $pagenext = $page + 1;
 $search_all = GETPOST('search_all', 'alphanohtml') ? trim(GETPOST('search_all', 'alphanohtml')) : trim(GETPOST('sall', 'alphanohtml'));
 $search     = array();
 foreach ($risk->fields as $key => $val) {
-	if (GETPOST('search_' . $key, 'alpha') !== '') $search[$key] = GETPOST('search_' . $key, 'alpha');
+	$search[$key] = (GETPOST('search_' . $key, 'alpha') !== '') ? GETPOST('search_' . $key, 'alpha') : '';
 	if ($key == 'fk_element' && $contextpage == 'sharedrisk') {
 		$search[$key] = GETPOST('search_' . $key . '_sharedrisk', 'alpha');
 	}
@@ -124,18 +135,35 @@ foreach ($risk->fields as $key => $val) {
 // List of fields to search into when doing a "search in all"
 $fieldstosearchall = array();
 foreach ($risk->fields as $key => $val) {
-	if ($val['searchall']) $fieldstosearchall['r.' . $key] = $val['label'];
+	if (!empty($val['searchall'])) $fieldstosearchall['r.' . $key] = $val['label'];
 }
 
-// Definition of fields for list
+// Definition of array of fields for columns
 $arrayfields = array();
 foreach ($risk->fields as $key => $val) {
-	// If $val['visible']==0, then we never show the field
-	if ( ! empty($val['visible'])) $arrayfields['r.' . $key] = array('label' => $val['label'], 'checked' => (($val['visible'] < 0) ? 0 : 1), 'enabled' => ($val['enabled'] && ($val['visible'] != 3)), 'position' => $val['position']);
+    if (!empty($val['visible'])) {
+        $visible = (int) dol_eval($val['visible']);
+        $arrayfields['r.' . $key] = [
+            'label'    => $val['label'],
+            'checked'  => (($visible < 0 || (!isset($val['showinpwa']) && $mode == 'pwa')) ? 0 : 1),
+            'enabled'  => ($visible != 3 && dol_eval($val['enabled'])),
+            'position' => $val['position'],
+            'help'     => $val['help'] ?? '',
+        ];
+    }
 }
+
 foreach ($evaluation->fields as $key => $val) {
-	// If $val['visible']==0, then we never show the field
-	if ( ! empty($val['visible'])) $arrayfields['evaluation.' . $key] = array('label' => $val['label'], 'checked' => (($val['visible'] < 0) ? 0 : 1), 'enabled' => ($val['enabled'] && ($val['visible'] != 3)), 'position' => $val['position']);
+    if (!empty($val['visible'])) {
+        $visible = (int) dol_eval($val['visible']);
+        $arrayfields['evaluation.' . $key] = [
+            'label'    => $val['label'],
+            'checked'  => (($visible < 0 || (!isset($val['showinpwa']) && $mode == 'pwa')) ? 0 : 1),
+            'enabled'  => ($visible != 3 && dol_eval($val['enabled'])),
+            'position' => $val['position'],
+            'help'     => $val['help'] ?? '',
+        ];
+    }
 }
 
 // Extra fields
@@ -149,12 +177,19 @@ $arrayfields = dol_sort_array($arrayfields, 'position');
 include DOL_DOCUMENT_ROOT . '/core/actions_fetchobject.inc.php'; // Must be include, not include_once.
 
 //Permission for digiriskelement_risk
-$permissiontoread   = $user->rights->digiriskdolibarr->risk->read;
-$permissiontoadd    = $user->rights->digiriskdolibarr->risk->write;
-$permissiontodelete = $user->rights->digiriskdolibarr->risk->delete;
+
+if ($riskType == 'risk') {
+    $permissiontoread   = $user->rights->digiriskdolibarr->risk->read;
+    $permissiontoadd    = $user->rights->digiriskdolibarr->risk->write;
+    $permissiontodelete = $user->rights->digiriskdolibarr->risk->delete;
+} elseif ($riskType == 'riskenvironmental') {
+    $permissiontoread   = $user->rights->digiriskdolibarr->riskenvironmental->read;
+    $permissiontoadd    = $user->rights->digiriskdolibarr->riskenvironmental->write;
+    $permissiontodelete = $user->rights->digiriskdolibarr->riskenvironmental->delete;
+}
 
 // Security check
-if ( ! $permissiontoread) accessforbidden();
+saturne_check_access($permissiontoread);
 
 /*
  * Actions
@@ -178,8 +213,9 @@ if (empty($reshook)) {
 		foreach ($evaluation->fields as $key => $val) {
 			$search[$key] = '';
 		}
-		$toselect             = '';
-		$search_array_options = array();
+		$toselect              = '';
+		$search_array_options  = [];
+        $search_category_array = [];
 	}
 	if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha')
 		|| GETPOST('button_search_x', 'alpha') || GETPOST('button_search.x', 'alpha') || GETPOST('button_search', 'alpha')) {
@@ -188,7 +224,7 @@ if (empty($reshook)) {
 
 	$error = 0;
 
-	$backtopage = dol_buildpath('/digiriskdolibarr/view/digiriskelement/risk_list.php', 1);
+	$backtopage = dol_buildpath('/digiriskdolibarr/view/digiriskelement/risk_list.php?risk_type=' . $riskType, 1);
 
 	require_once './../../core/tpl/riskanalysis/risk/digiriskdolibarr_risk_actions.tpl.php';
 }
@@ -199,17 +235,14 @@ if (empty($reshook)) {
 
 $form = new Form($db);
 
-$title    = $langs->trans("RiskList");
-$help_url = 'FR:Module_Digirisk#.C3.89valuation_des_Risques';
-$morejs   = array("/digiriskdolibarr/js/digiriskdolibarr.js");
-$morecss  = array("/digiriskdolibarr/css/digiriskdolibarr.css");
+$title    = $langs->trans(ucfirst($riskType) . 's');
+$helpUrl = 'FR:Module_Digirisk#.C3.89valuation_des_Risques';
 
-llxHeader('', $title, $help_url, '', '', '', $morejs, $morecss);
+saturne_header(1,'', $title, $helpUrl);
 
 // Object card
 // ------------------------------------------------------------
 $allRisks = 1;
-require_once './../../core/tpl/medias/digiriskdolibarr_medias_gallery_modal.tpl.php';
 if (!empty($conf->global->DIGIRISKDOLIBARR_SHOW_RISKS)) {
 	$contextpage = 'risklist';
 	require_once './../../core/tpl/riskanalysis/risk/digiriskdolibarr_risklist_view.tpl.php';

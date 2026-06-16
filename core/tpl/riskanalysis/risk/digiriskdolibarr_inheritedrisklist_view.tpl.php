@@ -15,22 +15,22 @@
 	print '<input type="hidden" name="contextpage" value="' . $contextpage . '">';
 	if ($object->fk_parent > 0) {
 		$advanced_method_cotation_json = file_get_contents(DOL_DOCUMENT_ROOT . '/custom/digiriskdolibarr/js/json/default.json');
-		$advanced_method_cotation_array = json_decode($advanced_method_cotation_json, true);
+		$advancedCotationMethodArray = json_decode($advanced_method_cotation_json, true);
 
 		$digiriskelement                = new DigiriskElement($db);
 		$riskAssessment                 = new RiskAssessment($db);
-		$digiriskTask                   = new DigiriskTask($db);
+		$digiriskTask                   = new SaturneTask($db);
 		$extrafields                    = new Extrafields($db);
 		$usertmp                        = new User($db);
 		$project                        = new Project($db);
 		$DUProject                      = new Project($db);
 
 		$advanced_method_cotation_json  = file_get_contents(DOL_DOCUMENT_ROOT . '/custom/digiriskdolibarr/js/json/default.json');
-		$advanced_method_cotation_array = json_decode($advanced_method_cotation_json, true);
+		$advancedCotationMethodArray = json_decode($advanced_method_cotation_json, true);
 
 		$alldigiriskelement = $digiriskelement->getActiveDigiriskElements();
 
-		$DUProject->fetch($conf->global->DIGIRISKDOLIBARR_DU_PROJECT);
+		$DUProject->fetch($riskType == 'risk' ? $conf->global->DIGIRISKDOLIBARR_DU_PROJECT : $conf->global->DIGIRISKDOLIBARR_ENVIRONMENT_PROJECT);
 		$extrafields->fetch_name_optionals_label($digiriskTask->table_element);
 
 		$riskAssessmentList        = $riskAssessment->fetchAll();
@@ -39,7 +39,7 @@
 		$taskNextValue             = $refTaskMod->getNextValue('', $task);
 		$usertmp->fetchAll();
 		$usersList                 = $usertmp->users;
-		$timeSpentSortedByTasks    = $digiriskTask->fetchAllTimeSpentAllUser('AND ptt.fk_task > 0', 'task_datehour', 'DESC', 1);
+		$timeSpentSortedByTasks    = $digiriskTask->fetchAllTimeSpentAllUsers('AND fk_element > 0', 'element_datehour', 'DESC', 1);
 
 		if (is_array($riskAssessmentList) && !empty($riskAssessmentList)) {
 			foreach ($riskAssessmentList as $riskAssessmentSingle) {
@@ -64,7 +64,7 @@
 			$sql = preg_replace('/,\s*$/', '', $sql);
 			$sql .= " FROM " . MAIN_DB_PREFIX . $risk->table_element . " as r";
 			$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $digiriskelement->table_element . " as e on (r.fk_element = e.rowid)";
-			if (is_array($extrafields->attributes[$risk->table_element]['label']) && count($extrafields->attributes[$risk->table_element]['label'])) $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $risk->table_element . "_extrafields as ef on (r.rowid = ef.fk_object)";
+			if (!empty($extrafields->attributes[$risk->table_element]['label'])) $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $risk->table_element . "_extrafields as ef on (r.rowid = ef.fk_object)";
 			if ($risk->ismultientitymanaged == 1) $sql .= " WHERE r.entity IN (" . getEntity($risk->element) . ")";
 			else $sql .= " WHERE 1 = 1";
 			if (!$allRisks) {
@@ -92,6 +92,7 @@
 				$sql .= " AND fk_element > 0 ";
 				$sql .= " AND e.entity IN (" . getEntity($risk->element) . ") ";
 			}
+            $sql .= ' AND r.type = "' . $riskType . '"';
 
 			foreach ($search as $key => $val) {
 				if ($key == 'status' && $search[$key] == -1) continue;
@@ -176,7 +177,7 @@
 			$sql .= " FROM " . MAIN_DB_PREFIX . $evaluation->table_element . " as evaluation";
 			$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $risk->table_element . " as r on (evaluation.fk_risk = r.rowid)";
 			$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $digiriskelement->table_element . " as e on (r.fk_element = e.rowid)";
-			if (is_array($extrafields->attributes[$evaluation->table_element]['label']) && count($extrafields->attributes[$evaluation->table_element]['label'])) $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $evaluation->table_element . "_extrafields as ef on (evaluation.rowid = ef.fk_object)";
+			if (!empty($extrafields->attributes[$evaluation->table_element]['label'])) $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $evaluation->table_element . "_extrafields as ef on (evaluation.rowid = ef.fk_object)";
 			if ($evaluation->ismultientitymanaged == 1) $sql .= " WHERE evaluation.entity IN (" . getEntity($evaluation->element) . ")";
 			else $sql .= " WHERE 1 = 1";
 			$sql .= " AND evaluation.status = 1";
@@ -205,11 +206,12 @@
 				$sql .= " AND r.fk_element > 0";
 				$sql .= " AND e.entity IN (" . getEntity($evaluation->element) . ")";
 			}
+            $sql .= ' AND r.type = "' . $riskType . '"';
 
 			foreach ($search as $key => $val) {
 				if ($key == 'status' && $search[$key] == -1) continue;
-				$mode_search = (($evaluation->isInt($evaluation->fields[$key]) || $evaluation->isFloat($evaluation->fields[$key])) ? 1 : 0);
-				if (strpos($evaluation->fields[$key]['type'], 'integer:') === 0) {
+				$mode_search = (($risk->isInt($risk->fields[$key]) || $risk->isFloat($risk->fields[$key])) ? 1 : 0);
+				if (strpos($risk->fields[$key]['type'], 'integer:') === 0) {
 					if ($search[$key] == '-1') $search[$key] = '';
 					$mode_search = 2;
 				}
@@ -292,14 +294,11 @@
 	include DOL_DOCUMENT_ROOT . '/core/tpl/extrafields_list_search_param.tpl.php';
 
 	// List of mass actions available
-	$arrayofmassactions = array();
+	$arrayofmassactions = [];
+    $massactionbutton   = $form->selectMassAction('', $arrayofmassactions);
 
-	if ($action != 'list') {
-		$massactionbutton = $form->selectMassAction('', $arrayofmassactions);
-	}
-
-	$title = $langs->trans('DigiriskElementInheritedRisksList');
-	print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, 'digiriskdolibarr32px.png@digiriskdolibarr', 0, '', '', $limit, 0, 0, 1);
+	$title = $langs->trans('DigiriskElementInherited' . ucfirst($riskType) . 'sList');
+	print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, 'digiriskdolibarr_color.png@digiriskdolibarr', 0, '', '', $limit, 0, 0, 1);
 
 	include DOL_DOCUMENT_ROOT . '/core/tpl/massactions_pre.tpl.php';
 
@@ -329,26 +328,6 @@
 
 	$arrayfields = dol_sort_array($arrayfields, 'position');
 
-	$menuConf = 'MAIN_SELECTEDFIELDS_' . $varpage;
-
-	if (dol_strlen($user->conf->$menuConf) < 1  || preg_match('/t./', $user->conf->$menuConf)) {
-		$user->conf->$menuConf = 'r.fk_element,r.ref,r.category,evaluation.cotation,';
-	}
-
-	if ( ! preg_match('/r.description/', $user->conf->$menuConf) && $conf->global->DIGIRISKDOLIBARR_RISK_DESCRIPTION) {
-		$user->conf->$menuConf = $user->conf->$menuConf . 'r.description,';
-	} elseif ( ! $conf->global->DIGIRISKDOLIBARR_RISK_DESCRIPTION) {
-		$user->conf->$menuConf = preg_replace('/r.description,/', '', $user->conf->$menuConf);
-		$arrayfields['r.description']['enabled'] = 0;
-	}
-
-	if ( ! preg_match('/evaluation.has_tasks/', $user->conf->$menuConf) && $conf->global->DIGIRISKDOLIBARR_TASK_MANAGEMENT) {
-		$user->conf->$menuConf .= $user->conf->$menuConf  . 'evaluation.has_tasks,';
-	} elseif ( ! $conf->global->DIGIRISKDOLIBARR_TASK_MANAGEMENT) {
-		$user->conf->$menuConf = preg_replace('/evaluation.has_tasks,/', '', $user->conf->$menuConf);
-		$arrayfields['evaluation.has_tasks']['enabled'] = 0;
-	}
-
 	$selectedfields  = $form->multiSelectArrayWithCheckbox('inherited_risklist_selectedfields', $arrayfields, $varpage); // This also change content of $arrayfields
 	$selectedfields .= (count($arrayofmassactions) ? $form->showCheckAddButtons('checkforselect', 1) : '');
 
@@ -365,11 +344,11 @@
 		if ($key == 'status') $cssforfield .= ($cssforfield ? ' ' : '') . 'center';
 		if ( ! empty($arrayfields['r.' . $key]['checked'])) {
 			print '<td class="liste_titre' . ($cssforfield ? ' ' . $cssforfield : '') . '">';
-			if (is_array($val['arrayofkeyval'])) print $form->selectarray('search_' . $key, $val['arrayofkeyval'], $search[$key], $val['notnull'], 0, 0, '', 1, 0, 0, '', 'maxwidth75');
+			if (!empty($val['arrayofkeyval']) && is_array($val['arrayofkeyval'])) print $form->selectarray('search_' . $key, $val['arrayofkeyval'], (isset($search[$key]) ? $search[$key] : ''), $val['notnull'], 0, 0, '', 1, 0, 0, '', 'maxwidth75');
 			elseif (strpos($val['type'], 'integer:') === 0) {
 				print $risk->showInputField($val, $key, $search[$key], '', '', 'search_', 'maxwidth150', 1);
 			} elseif ($key == 'fk_element') {
-				print $digiriskelement->select_digiriskelement_list($search['fk_element'], 'search_fk_element', '', 1, 0, array(), 0, 0, 'minwidth100', 0, false, 1);
+				print $digiriskelement->selectDigiriskElementList($search['fk_element'], 'search_fk_element', [], 1, 0, array(), 0, 0, 'minwidth100 maxwidth300', 0, false, 1);
 			} elseif ($key == 'category') { ?>
 				<div class="wpeo-dropdown dropdown-large dropdown-grid category-danger padding" style="position: inherit">
 					<input class="input-hidden-danger" type="hidden" name="<?php echo 'search_' . $key ?>" value="<?php echo dol_escape_htmltag($search[$key]) ?>" />
@@ -379,13 +358,13 @@
 							<img class="danger-category-pic wpeo-tooltip-event hidden" src="" aria-label=""/>
 						</div>
 					<?php else : ?>
-						<div class="dropdown-toggle dropdown-add-button button-cotation wpeo-tooltip-event" aria-label="<?php echo (empty(dol_escape_htmltag($search[$key]))) ? $risk->get_danger_category_name($risk) : $risk->get_danger_category_name_by_position($search[$key]); ?>">
-							<img class="danger-category-pic tooltip hover" src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . ((empty(dol_escape_htmltag($search[$key]))) ? $risk->get_danger_category($risk) : $risk->get_danger_category_by_position($search[$key])) . '.png'?>" />
+						<div class="dropdown-toggle dropdown-add-button button-cotation wpeo-tooltip-event" aria-label="<?php echo (empty(dol_escape_htmltag($search[$key]))) ? $risk->getDangerCategoryName($risk, $riskType) : $risk->getDangerCategoryNameByPosition($search[$key], $riskType); ?>">
+							<img class="danger-category-pic tooltip hover" src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . ((empty(dol_escape_htmltag($search[$key]))) ? $risk->getDangerCategory($risk, $riskType) : $risk->getDangerCategoryByPosition($search[$key], $riskType)) . '.png'?>" />
 						</div>
 					<?php endif; ?>
-					<ul class="dropdown-content wpeo-gridlayout grid-5 grid-gap-0">
+					<ul class="saturne-dropdown-content wpeo-gridlayout grid-5 grid-gap-0">
 						<?php
-						$dangerCategories = $risk->get_danger_categories();
+						$dangerCategories = Risk::getDangerCategories($riskType);
 						if ( ! empty($dangerCategories) ) :
 							foreach ($dangerCategories as $dangerCategory) : ?>
 								<li class="item dropdown-item wpeo-tooltip-event classfortooltip" data-is-preset="<?php echo ''; ?>" data-id="<?php echo $dangerCategory['position'] ?>" aria-label="<?php echo $dangerCategory['name'] ?>">
@@ -395,7 +374,7 @@
 						endif; ?>
 					</ul>
 				</div>
-			<?php } elseif ( ! preg_match('/^(date|timestamp)/', $val['type']) && $key != 'category') print '<input type="text" class="flat maxwidth75" name="search_' . $key . '" value="' . dol_escape_htmltag($search[$key]) . '">';
+			<?php } elseif ( ! preg_match('/^(date|timestamp)/', $val['type']) && $key != 'category') print '<input type="text" class="flat maxwidth75" name="search_' . $key . '" value="' . dol_escape_htmltag(isset($search[$key]) ? $search[$key] : '') . '">';
 			print '</td>';
 		}
 	}
@@ -458,8 +437,9 @@
 	// --------------------------------------------------------------------
 
 	// contenu
-	$i          = 0;
-	$totalarray = array();
+	$i                       = 0;
+	$totalarray              = array();
+	$totalarray['nbfield']   = 0;
 
 	while ($i < ($limit ? min($num, $limit) : $num)) {
 		$obj = $db->fetch_object($resql);
@@ -487,17 +467,17 @@
 				if ($key == 'status') print $risk->getLibStatut(5);
 				elseif ($key == 'fk_element') {
 					if (is_object($alldigiriskelement[$risk->fk_element])) {
-						print $alldigiriskelement[$risk->fk_element]->getNomUrl(1, 'blank', 1);
+						print $alldigiriskelement[$risk->fk_element]->getNomUrl(1, 'blank', 0, '', -1, 1);
 					}
 				} elseif ($key == 'category') { ?>
 					<div class="table-cell table-50 cell-risk" data-title="Risque">
-						<div class="wpeo-dropdown dropdown-large category-danger padding wpeo-tooltip-event" aria-label="<?php echo $risk->get_danger_category_name($risk) ?>">
-							<img class="danger-category-pic hover" src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $risk->get_danger_category($risk) . '.png' ; ?>"/>
+						<div class="wpeo-dropdown dropdown-large category-danger padding wpeo-tooltip-event" aria-label="<?php echo $risk->getDangerCategoryName($risk, $riskType) ?>">
+							<img class="danger-category-pic hover" src="<?php echo DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $risk->getDangerCategory($risk, $riskType) . '.png' ; ?>"/>
 						</div>
 					</div>
 					<?php
 				} elseif ($key == 'ref') {
-					print $risk->getNomUrl(1, 'blank');
+					print $risk->getNomUrl(1, 'nolink');
 				} elseif ($key == 'description') {
 					if ($conf->global->DIGIRISKDOLIBARR_RISK_DESCRIPTION == 0 ) {
 						print $langs->trans('RiskDescriptionNotActivated');

@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,26 +21,18 @@
  *		\brief      Page to create/edit/view risk
  */
 
-// Load Dolibarr environment
-$res = 0;
-// Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)
-if ( ! $res && ! empty($_SERVER["CONTEXT_DOCUMENT_ROOT"])) $res = @include $_SERVER["CONTEXT_DOCUMENT_ROOT"] . "/main.inc.php";
-// Try main.inc.php into web root detected using web root calculated from SCRIPT_FILENAME
-$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME']; $tmp2 = realpath(__FILE__); $i = strlen($tmp) - 1; $j = strlen($tmp2) - 1;
-while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) { $i--; $j--; }
-if ( ! $res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1)) . "/main.inc.php")) $res          = @include substr($tmp, 0, ($i + 1)) . "/main.inc.php";
-if ( ! $res && $i > 0 && file_exists(dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php")) $res = @include dirname(substr($tmp, 0, ($i + 1))) . "/main.inc.php";
-// Try main.inc.php using relative path
-if ( ! $res && file_exists("../../main.inc.php")) $res       = @include "../../main.inc.php";
-if ( ! $res && file_exists("../../../main.inc.php")) $res    = @include "../../../main.inc.php";
-if ( ! $res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
-if ( ! $res) die("Include of main fails");
+// Load DigiriskDolibarr environment
+if (file_exists('../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../digiriskdolibarr.main.inc.php';
+} elseif (file_exists('../../digiriskdolibarr.main.inc.php')) {
+	require_once __DIR__ . '/../../digiriskdolibarr.main.inc.php';
+} else {
+	die('Include of digiriskdolibarr main fails');
+}
 
-global $conf, $db, $hookmanager, $langs, $user;
+global $conf, $db, $hookmanager, $langs, $mc, $user;
 
-$projectRefClass = $conf->global->PROJECT_ADDON;
-$taskRefClass    = $conf->global->PROJECT_TASK_ADDON;
-
+// Load Dolibarr libraries
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
@@ -48,25 +40,27 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmdirectory.class.php';
 require_once DOL_DOCUMENT_ROOT . '/projet/class/project.class.php';
-require_once DOL_DOCUMENT_ROOT . '/core/modules/project/' . $projectRefClass . '.php';
-require_once DOL_DOCUMENT_ROOT . '/core/modules/project/task/' . $taskRefClass . '.php';
+if (isModEnabled('categorie')) {
+    require_once DOL_DOCUMENT_ROOT.'/core/class/html.formcategory.class.php';
+    require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
+}
 
+// Load DigiriskDolibarr libraries
 require_once __DIR__ . '/../../class/digiriskelement.class.php';
 require_once __DIR__ . '/../../class/digiriskstandard.class.php';
-require_once __DIR__ . '/../../class/digiriskelement.class.php';
 require_once __DIR__ . '/../../class/riskanalysis/risk.class.php';
 require_once __DIR__ . '/../../class/riskanalysis/riskassessment.class.php';
-require_once __DIR__ . '/../../core/modules/digiriskdolibarr/riskanalysis/risk/mod_risk_standard.php';
 require_once __DIR__ . '/../../core/modules/digiriskdolibarr/riskanalysis/riskassessment/mod_riskassessment_standard.php';
 require_once __DIR__ . '/../../lib/digiriskdolibarr_digiriskelement.lib.php';
 require_once __DIR__ . '/../../lib/digiriskdolibarr_function.lib.php';
 
 // Load translation files required by the page
-$langs->loadLangs(array("digiriskdolibarr@digiriskdolibarr", "other"));
+saturne_load_langs(['other']);
 
 // Get parameters
 $id             = GETPOST('id', 'int');
 $action         = GETPOST('action', 'aZ09');
+$subaction      = GETPOST('subaction', 'aZ09');
 $massaction     = GETPOST('massaction', 'alpha'); // The bulk action (combo box choice into lists)
 $confirm        = GETPOST('confirm', 'alpha');
 $cancel         = GETPOST('cancel', 'aZ09');
@@ -78,9 +72,13 @@ $sortfield      = GETPOST('sortfield', 'alpha');
 $sortorder      = GETPOST('sortorder', 'alpha');
 $sharedrisks    = GETPOST('sharedrisks', 'int') ? GETPOST('sharedrisks', 'int') : $conf->global->DIGIRISKDOLIBARR_SHOW_SHARED_RISKS;
 $inheritedrisks = GETPOST('inheritedrisks', 'int') ? GETPOST('inheritedrisks', 'int') : $conf->global->DIGIRISKDOLIBARR_SHOW_INHERITED_RISKS_IN_LISTINGS;
+$riskType       = GETPOSTISSET('risk_type') ? GETPOST('risk_type') : 'risk';
 $page           = GETPOSTISSET('pageplusone') ? (GETPOST('pageplusone') - 1) : GETPOST("page", 'int');
 $page           = is_numeric($page) ? $page : 0;
 $page           = $page == -1 ? 0 : $page;
+if (isModEnabled('categorie')) {
+    $search_category_array = GETPOST('search_category_risk_list', 'array');
+}
 
 // Initialize technical objects
 $object           = new DigiriskElement($db);
@@ -90,10 +88,21 @@ $risk             = new Risk($db);
 $evaluation       = new RiskAssessment($db);
 $ecmdir           = new EcmDirectory($db);
 $project          = new Project($db);
-$task             = new DigiriskTask($db);
+$task             = new SaturneTask($db);
 $extrafields      = new ExtraFields($db);
+$DUProject        = new Project($db);
 
-$hookmanager->initHooks(array('riskcard', 'globalcard')); // Note that conf->hooks_modules contains array
+$numberingModuleName = [
+	'riskanalysis/' . $risk->element       => $conf->global->DIGIRISKDOLIBARR_RISK_ADDON,
+	'riskanalysis/' . $evaluation->element => $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON,
+	$project->element                      => $conf->global->PROJECT_ADDON,
+	'project/task'                         => $conf->global->PROJECT_TASK_ADDON,
+];
+
+list($refRiskMod, $refEvaluationMod, $refProjectMod, $refTaskMod) = saturne_require_objects_mod($numberingModuleName, $moduleNameLowerCase);
+
+$DUProject->fetch($conf->global->DIGIRISKDOLIBARR_DU_PROJECT);
+$hookmanager->initHooks(array('riskcard', 'digiriskelementview', 'globalcard')); // Note that conf->hooks_modules contains array
 
 // Fetch optionals attributes and labels
 $extrafields->fetch_name_optionals_label($risk->table_element);
@@ -102,7 +111,7 @@ $search_array_options = $extrafields->getOptionalsFromPost($risk->table_element,
 // Default sort order (if not yet defined by previous GETPOST)
 if ( ! $sortfield) $sortfield = $conf->global->DIGIRISKDOLIBARR_SORT_LISTINGS_BY_COTATION ? "evaluation.cotation" : "r." . key($risk->fields);; // Set here default search field. By default 1st field in definition.
 if ( ! $sortorder) $sortorder         = $conf->global->DIGIRISKDOLIBARR_SORT_LISTINGS_BY_COTATION ? "DESC" : "ASC" ;
-if ( ! $evalsortfield) $evalsortfield = "evaluation." . key($evaluation->fields);
+if (!isset($evalsortfield) || !$evalsortfield) $evalsortfield = "evaluation." . key($evaluation->fields);
 
 $offset   = $limit * $page;
 $pageprev = $page - 1;
@@ -112,7 +121,7 @@ $pagenext = $page + 1;
 $search_all = GETPOST('search_all', 'alphanohtml') ? trim(GETPOST('search_all', 'alphanohtml')) : trim(GETPOST('sall', 'alphanohtml'));
 $search     = array();
 foreach ($risk->fields as $key => $val) {
-	if (GETPOST('search_' . $key, 'alpha') !== '') $search[$key] = GETPOST('search_' . $key, 'alpha');
+	$search[$key] = (GETPOST('search_' . $key, 'alpha') !== '') ? GETPOST('search_' . $key, 'alpha') : '';
 
 	if ($key == 'fk_element' && $contextpage == 'sharedrisk') {
 		$search[$key] = GETPOST('search_' . $key . '_sharedrisk', 'alpha');
@@ -122,7 +131,7 @@ foreach ($risk->fields as $key => $val) {
 // List of fields to search into when doing a "search in all"
 $fieldstosearchall = array();
 foreach ($risk->fields as $key => $val) {
-	if ($val['searchall']) $fieldstosearchall['r.' . $key] = $val['label'];
+	if (!empty($val['searchall'])) $fieldstosearchall['r.' . $key] = $val['label'];
 }
 
 // Definition of fields for list
@@ -132,12 +141,30 @@ foreach ($risk->fields as $key => $val) {
 	if ($val['label'] == 'Entity' || $val['label'] == 'ParentElement') {
 		$val['visible'] = 0;
 	}
-	if ( ! empty($val['visible'])) $arrayfields['r.' . $key] = array('label' => $val['label'], 'checked' => (($val['visible'] < 0) ? 0 : 1), 'enabled' => ($val['enabled'] && ($val['visible'] != 3)), 'position' => $val['position']);
+    if (!empty($val['visible'])) {
+        $visible = (int) dol_eval($val['visible'], 1);
+        $arrayfields['r.' . $key] = [
+            'label'       => $val['label'],
+            'checked'     => (($visible < 0) ? 0 : 1),
+            'enabled'     => ($visible != 3 && dol_eval($val['enabled'], 1)),
+            'position'    => $val['position'],
+            'help'        => $val['help'] ?? ''
+        ];
+    }
 }
 
 foreach ($evaluation->fields as $key => $val) {
 	// If $val['visible']==0, then we never show the field
-	if ( ! empty($val['visible'])) $arrayfields['evaluation.' . $key] = array('label' => $val['label'], 'checked' => (($val['visible'] < 0) ? 0 : 1), 'enabled' => ($val['enabled'] && ($val['visible'] != 3)), 'position' => $val['position']);
+    if (!empty($val['visible'])) {
+        $visible = (int) dol_eval($val['visible'], 1);
+        $arrayfields['evaluation.' . $key] = [
+            'label'       => $val['label'],
+            'checked'     => (($visible < 0) ? 0 : 1),
+            'enabled'     => ($visible != 3 && dol_eval($val['enabled'], 1)),
+            'position'    => $val['position'],
+            'help'        => $val['help'] ?? ''
+        ];
+    }
 }
 
 // Extra fields
@@ -151,19 +178,12 @@ $arrayfields = dol_sort_array($arrayfields, 'position');
 include DOL_DOCUMENT_ROOT . '/core/actions_fetchobject.inc.php'; // Must be include, not include_once.
 
 //Permission for digiriskelement_risk
-require_once __DIR__ . '/../../core/tpl/digirisk_security_checks.php';
-
 $permissiontoread   = $user->rights->digiriskdolibarr->risk->read;
 $permissiontoadd    = $user->rights->digiriskdolibarr->risk->write;
 $permissiontodelete = $user->rights->digiriskdolibarr->risk->delete;
 
 // Security check
-if ( ! $permissiontoread) accessforbidden();
-
-$refRiskMod       = new $conf->global->DIGIRISKDOLIBARR_RISK_ADDON();
-$refEvaluationMod = new $conf->global->DIGIRISKDOLIBARR_RISKASSESSMENT_ADDON();
-$refProjectMod    = new $projectRefClass();
-$refTaskMod       = new $taskRefClass();
+saturne_check_access($permissiontoread, $object);
 
 /*
  * Actions
@@ -195,7 +215,7 @@ if (empty($reshook)) {
 
 	$error = 0;
 
-	$backtopage = dol_buildpath('/digiriskdolibarr/view/digiriskelement/digiriskelement_risk.php', 1) . '?id=' . ($id > 0 ? $id : '__ID__');
+	$backtopage = dol_buildpath('/digiriskdolibarr/view/digiriskelement/digiriskelement_risk.php', 1) . '?id=' . ($id > 0 ? $id : '__ID__') . '&risk_type=' . $riskType;
 
 	require_once __DIR__ . '/../../core/tpl/riskanalysis/risk/digiriskdolibarr_risk_actions.tpl.php';
 }
@@ -204,31 +224,39 @@ if (empty($reshook)) {
  * View
  */
 
-$form = new Form($db);
-$title    = $langs->trans("DigiriskElementRisk");
-$help_url = 'FR:Module_Digirisk#.C3.89valuation_des_Risques';
-$morejs   = array("/digiriskdolibarr/js/digiriskdolibarr.js");
-$morecss  = array("/digiriskdolibarr/css/digiriskdolibarr.css");
+$form    = new Form($db);
+$title   = $langs->trans(ucfirst($riskType) . 's');
+$helpUrl = 'FR:Module_Digirisk#.C3.89valuation_des_Risques';
 
-digiriskHeader($title, $help_url, $morejs, $morecss);
+// classforhorizontalscrolloftabs constrains #id-right width so the wide risk list table
+// scrolls inside its own .div-table-responsive instead of widening the whole page
+digirisk_header($title, $helpUrl, [], [], '', 'classforhorizontalscrolloftabs');
+
+if ($conf->browser->layout == 'phone') {
+    $onPhone = 1;
+} else {
+    $onPhone = 0;
+}
 
 print '<div id="cardContent" value="">';
 
 if ($sharedrisks) {
 	$formconfirm = '';
 
-	$alldigiriskelement = $digiriskelement->getActiveDigiriskElements(1);
+	$alldigiriskelement = $digiriskelement->getActiveDigiriskElements('shared');
 
 	// Import shared risks confirmation
 	if (($action == 'import_shared_risks' && (empty($conf->use_javascript_ajax) || !empty($conf->dol_use_jmobile)))        // Output when action = clone if jmobile or no js
 		|| (!empty($conf->use_javascript_ajax) && empty($conf->dol_use_jmobile))) {                            // Always output when not jmobile nor js
 
-		$allrisks = $risk->fetchAll('ASC', 'fk_element', 0, 0, array('customsql' => 'status > 0 AND entity NOT IN (' . $conf->entity . ') AND fk_element > 0'));
+		$allrisks = $risk->fetchAll('ASC', 'fk_element', 0, 0, array('customsql' => 'status > 0 AND type = "' . $riskType . '" AND entity NOT IN (' . $conf->entity . ') AND fk_element > 0'));
 		$formquestionimportsharedrisks = array(
-			'text' => '<i class="fas fa-circle-info"></i>' . $langs->trans("ConfirmImportSharedRisks"),
+			'text' => '<i class="fas fa-circle-info"></i>' . $langs->trans('ConfirmImportShared' . ucfirst($riskType) . 's'),
 		);
 
-		$riskAssessmentList = $evaluation->fetchAll('', '', 0, 0, array(), 'AND', 1);
+        $evaluation->ismultientitymanaged = 0;
+		$riskAssessmentList = $evaluation->fetchAll('', '', 0, 0, array('customsql' => ' entity NOT IN (' . $conf->entity . ')'), 'AND', 1);
+        $evaluation->ismultientitymanaged = 1;
 
 		if (is_array($riskAssessmentList) && !empty($riskAssessmentList)) {
 			foreach ($riskAssessmentList as $riskAssessmentSingle) {
@@ -261,7 +289,7 @@ if ($sharedrisks) {
 				}
 
 				if (array_key_exists($digiriskelementtmp->id, $alldigiriskelement)) {
-					$photoRisk = '<img class="danger-category-pic hover" src=' . DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $risks->get_danger_category($risks) . '.png' . '>';
+					$photoRisk = '<img class="danger-category-pic hover" src=' . DOL_URL_ROOT . '/custom/digiriskdolibarr/img/categorieDangers/' . $risks->getDangerCategory($risks, $risks->type) . '.png' . '>';
 
 					$importValue = '<div class="importsharedrisk"><span class="importsharedrisk-ref">' . 'S' . $risks->entity . '</span>';
 					$importValue .= '<span>' . dol_trunc($entityName[$risks->entity], 32) . '</span>';
@@ -277,7 +305,7 @@ if ($sharedrisks) {
 					$importValue .= '<span>' . dol_trunc($risks->description, 32) . '</span>';
 					$importValue .= '</div>';
 
-					$importValue .= '<div class="importsharedrisk risk-evaluation-cotation"  data-scale="'. $lastEvaluation->get_evaluation_scale() .'">';
+					$importValue .= '<div class="importsharedrisk risk-evaluation-cotation"  data-scale="'. $lastEvaluation->getEvaluationScale() .'">';
 					$importValue .= '<span class="importsharedrisk-risk-assessment">' . (!empty($lastEvaluation->cotation) ? $lastEvaluation->cotation : 0) . '</span>';
 					$importValue .= '</div>';
 
@@ -289,7 +317,7 @@ if ($sharedrisks) {
 					$nophoto      = DOL_URL_ROOT.'/public/theme/common/nophoto.png';
 
 					$importValue .= '<div class="risk-evaluation-photo risk-evaluation-photo-'. ($lastEvaluation->id > 0 ? $lastEvaluation->id : 0) .  ($risk->id > 0 ? ' risk-' . $risk->id : ' risk-new') .' open-medias-linked" style="margin-right: 0.5em">';
-					$importValue .= '<span class="floatleft inline-block valignmiddle divphotoref risk-evaluation-photo-single">';
+					$importValue .= '<span class="risk-evaluation-photo-single">';
 					$importValue .= '<input class="filepath-to-riskassessment filepath-to-riskassessment-'.( $risk->id > 0 ? $risk->id : 'new') .'" type="hidden" value="'. $pathToThumb .'">';
 					$importValue .=	'<input class="filename" type="hidden" value="">';
 					if (isset($lastEvaluation->photo) && dol_strlen($lastEvaluation->photo) > 0) {
@@ -321,7 +349,7 @@ if ($sharedrisks) {
 			}
 
 		}
-		$formconfirm .= digiriskformconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('ImportSharedRisks'), '', 'confirm_import_shared_risks', $formquestionimportsharedrisks, 'yes', 'actionButtonImportSharedRisks', 800, 800);
+		$formconfirm .= digiriskformconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id . '&risk_type=' . $riskType, $langs->trans('ImportShared' . ucfirst($riskType) . 's'), '', 'confirm_import_shared_risks', $formquestionimportsharedrisks, 'yes', 'actionButtonImportSharedRisks', 800, 800);
 	}
 
 	// Call Hook formConfirm
@@ -337,65 +365,43 @@ if ($sharedrisks) {
 if ($object->id > 0) {
 	$res = $object->fetch_optionals();
 
-	$head = digiriskelementPrepareHead($object);
-	dol_fiche_head($head, 'elementRisk', $title, -1, "digiriskdolibarr@digiriskdolibarr");
+	saturne_get_fiche_head($object, 'element' . ucfirst($riskType), $title);
 
 	// Object card
 	// ------------------------------------------------------------
-	$height                                   = 80;
-	$width                                    = 80;
-	dol_strlen($object->label) ? $morehtmlref = ' - ' . $object->label : '';
-	// Project
-	$morehtmlref = '<div class="refidno">';
-	$project->fetch($conf->global->DIGIRISKDOLIBARR_DU_PROJECT);
-	$morehtmlref .= $langs->trans('Project') . ' : ' . getNomUrlProject($project, 1, 'blank', 1);
-	// ParentElement
-	$parent_element = new DigiriskElement($db);
-	$result         = $parent_element->fetch($object->fk_parent);
-	if ($result > 0) {
-		$morehtmlref .= '<br>' . $langs->trans("Description") . ' : ' . $object->description;
-		$morehtmlref .= '<br>' . $langs->trans("ParentElement") . ' : ' . $parent_element->getNomUrl(1, 'blank', 1);
-	} else {
-		$digiriskstandard->fetch($conf->global->DIGIRISKDOLIBARR_ACTIVE_STANDARD);
-		$morehtmlref .= '<br>' . $langs->trans("Description") . ' : ' . $object->description;
-		$morehtmlref .= '<br>' . $langs->trans("ParentElement") . ' : ' . $digiriskstandard->getNomUrl(1, 'blank', 1);
-	}
-	$morehtmlref .= '</div>';
-	$morehtmlleft = '<div class="floatleft inline-block valignmiddle divphotoref">' . digirisk_show_photos('digiriskdolibarr', $conf->digiriskdolibarr->multidir_output[$conf->entity] . '/' . $object->element_type, 'small', 5, 0, 0, 0, $height, $width, 0, 0, 0, $object->element_type, $object) . '</div>';
-	$linkback = '<a href="' . dol_buildpath('/digiriskdolibarr/view/digiriskelement/risk_list.php', 1) . '">' . $langs->trans("BackToList") . '</a>';
-	digirisk_banner_tab($object, 'id', $linkback, 1, 'rowid', 'ref', $morehtmlref, '', 0, $morehtmlleft);
+    list($morehtmlref, $moreParams) = $object->getBannerTabContent();
+
+    saturne_banner_tab($object,'ref','none', 0, 'ref', 'ref', $morehtmlref, true, $moreParams);
 
 	// Buttons for actions
+	// The "import shared risks" action moved next to the "add risk" buttons (icon + tooltip) in the risk list view
 	print '<div class="tabsAction" >';
-	if ($permissiontoadd && !empty($conf->global->DIGIRISKDOLIBARR_SHOW_SHARED_RISKS)) {
-		print '<span class="butAction" id="actionButtonImportSharedRisks" title="" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=import_shared_risks' . '">' . $langs->trans("ImportSharedRisks") . '</span>';
-	}
 	print '</div>';
 
-	if (!empty($conf->global->DIGIRISKDOLIBARR_SHOW_RISKS)) {
+	if ($conf->global->DIGIRISKDOLIBARR_SHOW_RISKS == 1) {
 		$contextpage = 'risklist';
 		require_once __DIR__ . '/../../core/tpl/riskanalysis/risk/digiriskdolibarr_risklist_view.tpl.php';
 	}
 
-	if (!empty($conf->global->DIGIRISKDOLIBARR_SHOW_INHERITED_RISKS_IN_LISTINGS)) {
+	if ($conf->global->DIGIRISKDOLIBARR_SHOW_INHERITED_RISKS_IN_LISTINGS == 1) {
 		$contextpage = 'inheritedrisk';
 		require_once __DIR__ . '/../../core/tpl/riskanalysis/risk/digiriskdolibarr_inheritedrisklist_view.tpl.php';
 	}
 
-	if (!empty($conf->global->DIGIRISKDOLIBARR_SHOW_SHARED_RISKS)) {
+	if ($conf->global->DIGIRISKDOLIBARR_SHOW_SHARED_RISKS == 1) {
 		$contextpage = 'sharedrisk';
 		require_once __DIR__ . '/../../core/tpl/riskanalysis/risk/digiriskdolibarr_sharedrisklist_view.tpl.php';
 	}
+
+	require_once __DIR__ . '/../../core/tpl/riskanalysis/risk/digiriskdolibarr_psychosocial_risk_modal.tpl.php';
 }
 
 ?>
-
 <script>
 	$('.ulrisklist_selectedfields').attr('style','z-index:1050')
 	$('.ulinherited_risklist_selectedfields').attr('style','z-index:1050')
 	$('.ulshared_risklist_selectedfields').attr('style','z-index:1050')
 </script>
-
 <?php
 print '</div>' . "\n";
 print '<!-- End div class="cardcontent" -->';

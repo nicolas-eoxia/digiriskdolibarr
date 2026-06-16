@@ -32,7 +32,7 @@ class AccidentInvestigationDocument extends SaturneDocuments
 	/**
 	 * @var string Module name.
 	 */
-	public string $module = 'digiriskdolibarr';
+	public $module = 'digiriskdolibarr';
 
 	/**
 	 * @var string Element type of object.
@@ -42,7 +42,7 @@ class AccidentInvestigationDocument extends SaturneDocuments
 	/**
 	 * Constructor.
 	 *
-	 * @param DoliDb $db Database handler.
+	 * @param DoliDB $db Database handler.
 	 */
 	public function __construct(DoliDB $db)
 	{

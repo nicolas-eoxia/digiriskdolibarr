@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2021 EOXIA <dev@eoxia.com>
+/* Copyright (C) 2021-2023 EVARISK <technique@evarisk.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,60 +16,49 @@
  */
 
 /**
- * \file        class/evaluator.class.php
- * \ingroup     digiriskdolibarr
- * \brief       This file is a CRUD class file for Evaluator (Create/Read/Update/Delete)
+ * \file    class/evaluator.class.php
+ * \ingroup digiriskdolibarr
+ * \brief   This file is a CRUD class file for Evaluator (Create/Read/Update/Delete).
  */
 
-require_once DOL_DOCUMENT_ROOT . '/core/class/commonobject.class.php';
+// Load Saturne libraries.
+require_once __DIR__ . '/../../saturne/class/saturneobject.class.php';
 
-require_once __DIR__ . '/dashboarddigiriskstats.class.php';
 
 /**
- * Class for Evaluator
+ * Class for Evaluator.
  */
-class Evaluator extends CommonObject
+class Evaluator extends SaturneObject
 {
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
+    /**
+     * @var string Module name.
+     */
+    public $module = 'digiriskdolibarr';
 
-	/**
-	 * @var string[] Array of error strings
-	 */
-	public $errors = array();
+    /**
+     * @var string Element type of object.
+     */
+    public $element = 'evaluator';
 
-	/**
-	 * @var int The object identifier
-	 */
-	public $id;
+    /**
+     * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management.
+     */
+    public $table_element = 'digiriskdolibarr_evaluator';
 
-	/**
-	 * @var string ID to identify managed object.
-	 */
-	public $element = 'evaluator';
+    /**
+     * @var int Does this object support multicompany module ?
+     * 0 = No test on entity, 1 = Test with field entity, 'field@table' = Test with link by field@table.
+     */
+    public $ismultientitymanaged = 1;
 
-	/**
-	 * @var string Name of table without prefix where object is stored. This is also the key used for extrafields management.
-	 */
-	public $table_element = 'digiriskdolibarr_evaluator';
+    /**
+     * @var string Name of icon for evaluator. Must be a 'fa-xxx' fontawesome code (or 'fa-xxx_fa_color_size') or 'evaluator@digiriskdolibarr' if picto is file 'img/object_evaluator.png'.
+     */
+    public string $picto = 'fontawesome_fa-user-check_fas_#d35968';
 
-	/**
-	 * @var int  Does this object support multicompany module ?
-	 * 0=No test on entity, 1=Test with field entity, 'field@table'=Test with link by field@table
-	 */
-	public $ismultientitymanaged = 1;
-
-	/**
-	 * @var int  Does object support extrafields ? 0=No, 1=Yes
-	 */
-	public $isextrafieldmanaged = 1;
-
-	/**
-	 * @var string String with name of icon for evaluator. Must be the part after the 'object_' into object_evaluator.png
-	 */
-	public $picto = 'evaluator@digiriskdolibarr';
+    public const STATUS_DELETED   = -1;
+    public const STATUS_VALIDATED = 1;
+    public const STATUS_ARCHIVED  = 3;
 
 	/**
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
@@ -108,65 +97,15 @@ class Evaluator extends CommonObject
 	public $fk_user;
 	public $fk_parent;
 
-	/**
-	 * Constructor
-	 *
-	 * @param DoliDb $db Database handler
-	 */
-	public function __construct(DoliDB $db)
-	{
-		global $conf, $langs;
-
-		$this->db = $db;
-
-		if (empty($conf->global->MAIN_SHOW_TECHNICAL_ID) && isset($this->fields['rowid'])) $this->fields['rowid']['visible'] = 0;
-		if (empty($conf->multicompany->enabled) && isset($this->fields['entity'])) $this->fields['entity']['enabled']        = 0;
-
-		// Unset fields that are disabled
-		foreach ($this->fields as $key => $val) {
-			if (isset($val['enabled']) && empty($val['enabled'])) {
-				unset($this->fields[$key]);
-			}
-		}
-
-		// Translate some data of arrayofkeyval
-		if (is_object($langs)) {
-			foreach ($this->fields as $key => $val) {
-				if (is_array($val['arrayofkeyval'])) {
-					foreach ($val['arrayofkeyval'] as $key2 => $val2) {
-						$this->fields[$key]['arrayofkeyval'][$key2] = $langs->trans($val2);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Create object into database
-	 *
-	 * @param  User $user      User that creates
-	 * @param  bool $notrigger false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, Id of created object if OK
-	 */
-	public function create(User $user, $notrigger = false)
-	{
-		global $conf;
-
-		$this->element = $this->element . '@digiriskdolibarr';
-		return $this->createCommon($user, $notrigger || !$conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_EVALUATOR_CREATE);
-	}
-
-	/**
-	 * Load object in memory from the database
-	 *
-	 * @param int    $id   Id object
-	 * @param string $ref  Ref
-	 * @return int         <0 if KO, 0 if not found, >0 if OK
-	 */
-	public function fetch($id, $ref = null)
-	{
-		return $this->fetchCommon($id, $ref);
-	}
+    /**
+     * Constructor.
+     *
+     * @param DoliDB $db Database handler.
+     */
+    public function __construct(DoliDB $db)
+    {
+        parent::__construct($db, $this->module, $this->element);
+    }
 
 	/**
 	 * Load object in memory from the database
@@ -177,199 +116,81 @@ class Evaluator extends CommonObject
 	 */
 	public function fetchFromParent($parent_id)
 	{
-		$filter = array('customsql' => 'fk_parent=' . $this->db->escape($parent_id));
+		$filter = array('customsql' => 'fk_parent=' . $this->db->escape($parent_id) . ' AND status > ' . $this::STATUS_DELETED);
 		return $this->fetchAll('', '', 0, 0, $filter, 'AND');
 	}
 
-	/**
-	 * Load list of objects in memory from the database.
-	 *
-	 * @param string $sortorder Sort Order
-	 * @param string $sortfield Sort field
-	 * @param int $limit limit
-	 * @param int $offset Offset
-	 * @param array $filter Filter array. Example array('field'=>'valueforlike', 'customurl'=>...)
-	 * @param string $filtermode Filter mode (AND or OR)
-	 * @param  string  $groupby add GROUP BY key word
-	 * @return array|int                 int <0 if KO, array of pages if OK
-	 * @throws Exception
-	 */
-	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND', $groupby = '')
-	{
-		dol_syslog(__METHOD__, LOG_DEBUG);
+    /**
+     * Load evaluator infos
+     *
+     * @param  array     $moreParam More param (filter/filterEvaluator)
+     * @return array     $array     Array of evaluators / evaluatorByEntities
+     * @throws Exception
+     */
+    public static function loadEvaluatorInfos(array $moreParam = []): array
+    {
+        $array = [];
 
-		$records = array();
+        $select       = ', d.ref AS digiriskElementRef, d.entity AS digiriskElementEntity, d.label AS digiriskElementLabel, u.lastname AS userLastName, u.firstname AS userFirstName';
+        $moreSelects  = ['digiriskElementRef', 'digiriskElementEntity', 'digiriskElementLabel', 'userLastName', 'userFirstName'];
+        $join         = ' INNER JOIN ' . MAIN_DB_PREFIX . 'digiriskdolibarr_digiriskelement AS d ON d.rowid = t.fk_parent';
+        $join        .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'user AS u ON u.rowid = t.fk_user';
+        $filter       = 'd.status = ' . DigiriskElement::STATUS_VALIDATED . ' AND t.status = ' . self::STATUS_VALIDATED . ($moreParam['filter'] ?? '') .  ($moreParam['filterEvaluator'] ?? '');
+        $evaluators   = saturne_fetch_all_object_type('Evaluator', '', '', 0, 0, ['customsql' => $filter], 'AND', false, false, false, $join, [], $select, $moreSelects);
+        if (!is_array($evaluators) || empty($evaluators)) {
+            $evaluators = [];
+        }
 
-		$sql                                                                              = 'SELECT ';
-		$sql                                                                             .= $this->getFieldList();
-		$sql                                                                             .= ' FROM ' . MAIN_DB_PREFIX . $this->table_element . ' as t';
-		if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) $sql .= ' WHERE t.entity IN (' . getEntity($this->table_element) . ')';
-		else $sql                                                                        .= ' WHERE 1 = 1';
-		// Manage filter
-		$sqlwhere = array();
-		if (count($filter) > 0) {
-			foreach ($filter as $key => $value) {
-				if ($key == 't.rowid') {
-					$sqlwhere[] = $key . '=' . $value;
-				} elseif (strpos($key, 'date') !== false) {
-					$sqlwhere[] = $key . ' = \'' . $this->db->idate($value) . '\'';
-				} elseif ($key == 'customsql') {
-					$sqlwhere[] = $value;
-				} else {
-					$sqlwhere[] = $key . ' LIKE \'%' . $this->db->escape($value) . '%\'';
-				}
-			}
-		}
-		if (count($sqlwhere) > 0) {
-			$sql .= ' AND (' . implode(' ' . $filtermode . ' ', $sqlwhere) . ')';
-		}
+        $array['nbEvaluators'] = count($evaluators);
 
-		if (!empty($groupby)) {
-			$sql .= ' GROUP BY ' . $groupby;
-		}
+        $array['evaluators'] = [];
+        foreach ($evaluators as $evaluator) {
+            $array['evaluators'][$evaluator->id] = $evaluator;
+            $array['nbEvaluatorByEntities'][$evaluator->entity] =
+                ($array['nbEvaluatorByEntities'][$evaluator->entity] ?? 0) + 1;
+        }
 
-		if ( ! empty($sortfield)) {
-			$sql .= $this->db->order($sortfield, $sortorder);
-		}
-		if ( ! empty($limit)) {
-			$sql .= ' ' . $this->db->plimit($limit, $offset);
-		}
+        return $array;
+    }
 
-		$resql = $this->db->query($sql);
-		if ($resql) {
-			$num = $this->db->num_rows($resql);
-			$i   = 0;
-			while ($i < ($limit ? min($limit, $num) : $num)) {
-				$obj = $this->db->fetch_object($resql);
+    /**
+     * Load dashboard info evaluator
+     *
+     * @return array
+     * @throws Exception
+     */
+    public function load_dashboard(): array
+    {
+        global $conf, $langs;
 
-				$record = new self($this->db);
-				$record->setVarsFromFetchObj($obj);
+        $arrayNbEmployeesInvolved = $this->getNbEmployeesInvolved();
+        $arrayNbEmployees         = $this->getNbEmployees();
 
-				$records[$record->id] = $record;
+        $array['widgets'] = [
+            'employees' => [
+                'title'      => $langs->transnoentities('Employees'),
+                'picto'      => 'fas fa-user',
+                'pictoColor' => '#32E592',
+                'label'      => [$langs->transnoentities('NbEmployeesInvolved') ?? '', $langs->transnoentities('NbEmployees') ?? ''],
+                'content'    => [$arrayNbEmployeesInvolved['nbemployeesinvolved'] ?? 0, $arrayNbEmployees['nbemployees'] ?? 0],
+                'tooltip'    => [$langs->transnoentities('NbEmployeesInvolvedTooltip'), (($conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES) ? $langs->transnoentities('NbEmployeesConfTooltip') : $langs->transnoentities('NbEmployeesTooltip'))],
+                'widgetName' => $langs->transnoentities('Employees'),
+            ]
+        ];
 
-				$i++;
-			}
-			$this->db->free($resql);
-
-			return $records;
-		} else {
-			$this->errors[] = 'Error ' . $this->db->lasterror();
-			dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
-
-			return -1;
-		}
-	}
-
-	/**
-	 * Update object into database
-	 *
-	 * @param  User $user      User that modifies
-	 * @param  bool $notrigger false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, >0 if OK
-	 */
-	public function update(User $user, $notrigger = false)
-	{
-		global $conf;
-
-		return $this->updateCommon($user, $notrigger || !$conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_EVALUATOR_MODIFY);
-	}
-
-	/**
-	 * Delete object in database
-	 *
-	 * @param User $user       User that deletes
-	 * @param bool $notrigger  false=launch triggers after, true=disable triggers
-	 * @return int             <0 if KO, >0 if OK
-	 */
-	public function delete(User $user, $notrigger = false)
-	{
-		global $conf;
-
-		return $this->deleteCommon($user, $notrigger || !$conf->global->DIGIRISKDOLIBARR_MAIN_AGENDA_ACTIONAUTO_EVALUATOR_DELETE);
-	}
-
-	/**
-	 *	Load the info information in the object
-	 *
-	 *	@param  int		$id       Id of object
-	 *	@return	void
-	 */
-	public function info($id)
-	{
-		$sql    = 'SELECT rowid, date_creation as datec, tms as datem,';
-		$sql   .= ' fk_user_creat, fk_user_modif';
-		$sql   .= ' FROM ' . MAIN_DB_PREFIX . $this->table_element . ' as t';
-		$sql   .= ' WHERE t.rowid = ' . $id;
-		$result = $this->db->query($sql);
-		if ($result) {
-			if ($this->db->num_rows($result)) {
-				$obj      = $this->db->fetch_object($result);
-				$this->id = $obj->rowid;
-//				if ($obj->fk_user_author) {
-//					$cuser = new User($this->db);
-//					$cuser->fetch($obj->fk_user_author);
-//					$this->user_creation = $cuser;
-//				}
-//
-//				if ($obj->fk_user_valid) {
-//					$vuser = new User($this->db);
-//					$vuser->fetch($obj->fk_user_valid);
-//					$this->user_validation = $vuser;
-//				}
-//
-//				if ($obj->fk_user_cloture) {
-//					$cluser = new User($this->db);
-//					$cluser->fetch($obj->fk_user_cloture);
-//					$this->user_cloture = $cluser;
-//				}
-
-				$this->date_creation     = $this->db->jdate($obj->date_creation);
-//				$this->date_modification = $this->db->jdate($obj->datem);
-//				$this->date_validation   = $this->db->jdate($obj->datev);
-			}
-
-			$this->db->free($result);
-		} else {
-			dol_print_error($this->db);
-		}
-	}
-
-	/**
-	 * Load dashboard info evaluator.
-	 * - get number employees involved
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function load_dashboard()
-	{
-		global $conf, $langs;
-
-		$arrayNbEmployeesInvolved = $this->getNbEmployeesInvolved();
-		$arrayNbEmployees         = $this->getNbEmployees();
-
-		$array['widgets'] = array(
-			DashboardDigiriskStats::DASHBOARD_EVALUATOR => array(
-				'label'      => array($langs->transnoentities("NbEmployeesInvolved"), $langs->transnoentities("NbEmployees")),
-				'content'    => array($arrayNbEmployeesInvolved['nbemployeesinvolved'], $arrayNbEmployees['nbemployees']),
-				'tooltip'    => array($langs->transnoentities("NbEmployeesInvolvedTooltip"), (($conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES) ? $langs->transnoentities("NbEmployeesConfTooltip") : $langs->transnoentities("NbEmployeesTooltip"))),
-				'picto'      => 'fas fa-user-check',
-				'widgetName' => $langs->transnoentities('Evaluator')
-			)
-		);
-
-		return $array;
-	}
+        return $array;
+    }
 
 	/**
 	 * Get number employees involved.
 	 *
-	 * @return array
+     * @param  array    $moreParam More param (Object/user/etc)
+     * @return array
 	 * @throws Exception
 	 */
-	public function getNbEmployeesInvolved() {
+	public function getNbEmployeesInvolved(array $moreParam = []) {
 		// Number employees involved
-		$allevaluators = $this->fetchAll('','', 0, 0, array(), 'AND', 'fk_user');
+		$allevaluators = $this->fetchAll('','', 0, 0, ['customsql' => 't.status = ' . Evaluator::STATUS_VALIDATED . ($moreParam['filter'] ?? '')]);
 		if (is_array($allevaluators) && !empty($allevaluators)) {
 			$array['nbemployeesinvolved'] = count($allevaluators);
 		} else {
@@ -378,27 +199,64 @@ class Evaluator extends CommonObject
 		return $array;
 	}
 
-	/**
-	 * Get number employees.
-	 *
-	 * @return array
-	 * @throws Exception
-	 */
-	public function getNbEmployees() {
-		global $conf;
+    /**
+     * Get number employees
+     *
+     * @param  array    $moreParam More param (Object/user/etc)
+     * @return array
+     * @throws Exception
+     */
+    public function getNbEmployees(array $moreParam = []): array
+    {
+        global $db;
 
-		// Number employees
-		if ($conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES > 0 && $conf->global->DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES) {
-			$array['nbemployees'] = $conf->global->DIGIRISKDOLIBARR_NB_EMPLOYEES;
-		} else {
-			$user = new User($this->db);
-			$allusers = $user->get_full_tree(0, 'u.employee = 1');
-			if (!empty($allusers) && is_array($allusers)) {
-				$array['nbemployees'] = count($allusers);
-			} else {
-				$array['nbemployees'] = 'N/A';
-			}
-		}
-		return $array;
-	}
+        if (getDolGlobalInt('DIGIRISKDOLIBARR_NB_EMPLOYEES') > 0 && getDolGlobalInt('DIGIRISKDOLIBARR_MANUAL_INPUT_NB_EMPLOYEES')) {
+            $array['nbemployees'] = getDolGlobalInt('DIGIRISKDOLIBARR_NB_EMPLOYEES');
+        } else {
+            $sql  = 'SELECT COUNT(DISTINCT u.rowid) as nb';
+            $sql .= ' FROM ' . MAIN_DB_PREFIX . 'user AS u';
+            $sql .= ' WHERE u.entity IN (' . getEntity('user') . ')';
+            $sql .= ' AND u.employee = 1';
+            $sql .= ' AND u.statut = 1';
+
+            $resql = $db->query($sql);
+            if ($resql) {
+                $obj = $db->fetch_object($resql);
+                $array['nbemployees'] = (int) $obj->nb;
+            } else {
+                $array['nbemployees'] = 0;
+            }
+        }
+        return $array;
+    }
+
+    /**
+     * Write information of trigger description
+     *
+     * @return string Description to display in actioncomm->note_private
+     */
+    public function getTriggerDescription(): string
+    {
+        global $langs;
+
+        require_once __DIR__ . '/digiriskelement.class.php';
+
+        $ret = parent::getTriggerDescription();
+
+        $now             = dol_now();
+        $userstat        = new User($this->db);
+        $digiriskelement = new DigiriskElement($this->db);
+
+        $digiriskelement->fetch($this->fk_parent);
+        $userstat->fetch($this->fk_user);
+        $langs->load('companies');
+
+        $ret .= $langs->trans('ParentElement') . ' : ' . $digiriskelement->ref . " - " . $digiriskelement->label . '<br>';
+        $ret .= $langs->trans('UserAssigned') . ' : ' . $userstat->firstname . " " . $userstat->lastname . '<br>';
+        $ret .= $langs->trans('PostOrFunction') . ' : ' . (!empty($this->job) ? $this->job : 'N/A') . '<br>';
+        $ret .= $langs->trans('AssignmentDate') . ' : ' . dol_print_date($now, 'dayhoursec', 'tzuser') . '<br>';
+        $ret .= $langs->trans('EvaluationDuration') . ' : ' . convertSecondToTime($this->duration * 60, 'allhourmin') . ' min' . '<br>';
+
+        return $ret;
+    }
 }
